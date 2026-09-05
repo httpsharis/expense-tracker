@@ -1,109 +1,110 @@
-import { TextStyle } from 'react-native';
+// src/shared/theme/tokens.ts
 
-export const tokens = {
-    appName: 'Saldo',
-    colors: {
-        dark: {
-            background: '#0D1117',
-            surfaceContainerLowest: '#090D12',
-            surfaceContainerLow: '#161B22',
-            surfaceContainer: '#21262D',
-            surfaceContainerHigh: '#30363D',
-            surfaceContainerHighest: '#484F58',
-            onSurface: '#F0F6FC',
-            onSurfaceVariant: '#8B949E',
-            outline: '#6E7681',
-            outlineVariant: '#30363D',
-            primary: '#10B981', // Emerald Primary
-            onPrimary: '#042F2E',
-            primaryContainer: '#064E3B',
-            secondary: '#06B6D4', // Cyber Cyan
-            tertiary: '#8B5CF6', // Violet Accent
-            error: '#F87171',
-            onError: '#450A0A',
-            income: '#10B981',
-            expense: '#EF4444',
-            settlement: '#3B82F6',
-            warning: '#F59E0B',
-        },
-        light: {
-            background: '#F6F8FA',
-            surfaceContainerLowest: '#FFFFFF',
-            surfaceContainerLow: '#F0F2F5',
-            surfaceContainer: '#E5E7EB',
-            surfaceContainerHigh: '#D1D5DB',
-            surfaceContainerHighest: '#9CA3AF',
-            onSurface: '#111827',
-            onSurfaceVariant: '#4B5563',
-            outline: '#6B7280',
-            outlineVariant: '#E5E7EB',
-            primary: '#059669',
-            onPrimary: '#FFFFFF',
-            primaryContainer: '#D1FAE5',
-            secondary: '#0891B2',
-            tertiary: '#7C3AED',
-            error: '#DC2626',
-            onError: '#FFFFFF',
-            income: '#059669',
-            expense: '#DC2626',
-            settlement: '#2563EB',
-            warning: '#D97706',
-        },
-        signal: {
-            accent: '#F59E0B', // Debt Gold
-            onAccent: '#111827',
-            accentDim: '#B45309',
-            success: '#10B981',
-            info: '#3B82F6',
-            danger: '#EF4444',
-        },
-    },
-    typography: {
-        headlineLg: {
-            fontFamily: 'IBMPlexSans-SemiBold',
-            fontSize: 32,
-            lineHeight: 40,
-            letterSpacing: -0.64,
-        },
-        headlineMd: {
-            fontFamily: 'IBMPlexSans-Medium',
-            fontSize: 20,
-            lineHeight: 28,
-        },
-        bodyMd: {
-            fontFamily: 'Roboto-Regular',
-            fontSize: 16,
-            lineHeight: 24,
-        },
-        dataDisplay: {
-            fontFamily: 'Roboto-Bold',
-            fontSize: 36,
-            lineHeight: 44,
-            letterSpacing: -0.36,
-            fontVariant: ['tabular-nums'] as TextStyle['fontVariant'],
-        },
-        labelSm: {
-            fontFamily: 'Roboto-Bold',
-            fontSize: 12,
-            lineHeight: 16,
-            letterSpacing: 0.6,
-        },
-    },
-    spacing: {
-        base: 8,
-        containerPadding: 20,
-        cardGap: 14,
-        sectionMargin: 24,
-        touchTarget: 48,
-    },
-    radius: {
-        sm: 6,
-        default: 10,
-        md: 14,
-        lg: 18,
-        hero: 24,
-        full: 9999,
-    },
+/**
+ * Gold is a state signal, not a decorative color — it means "money is
+ * owed to you and still open." It never changes with theme and never
+ * gets reused for anything else (selection, links, progress).
+ */
+export const GOLD = '#C9A24B';
+export const GOLD_DIM = 'rgba(201,162,75,0.14)';
+
+export interface ThemeTokens {
+  // Screen-level backgrounds
+  bgCanvas: string;
+  bgBase: string;
+
+  // Flat surfaces — resting cards, rows, inputs
+  surfaceFlat: string;
+  surfaceFlatBorder: string;
+
+  // Raised surfaces — buttons, elevated cards
+  surfaceRaised: string;
+  shadowColor: string;
+
+  // Overlay surfaces — blurred, floats over other content
+  overlayTint: string;
+  blurIntensity: number;
+
+  // Text
+  textPrimary: string;
+  textSecondary: string;
+  textTertiary: string;
+
+  divider: string;
+
+  // Primary CTA
+  btnFill: string;
+  btnText: string;
+
+  gold: string;
+  goldDim: string;
+}
+
+const dark: ThemeTokens = {
+  bgCanvas: '#000000',
+  bgBase: '#0A0A0B',
+
+  surfaceFlat: '#141416',
+  surfaceFlatBorder: 'rgba(255,255,255,0.08)',
+
+  surfaceRaised: '#18181B',
+  shadowColor: '#000000',
+
+  overlayTint: 'rgba(10,10,11,0.72)',
+  blurIntensity: 40,
+
+  textPrimary: '#F5F5F3',
+  textSecondary: '#9C9C9F',
+  textTertiary: '#5E5E61',
+
+  divider: 'rgba(255,255,255,0.08)',
+
+  btnFill: '#F2F2F0',
+  btnText: '#0A0A0B',
+
+  gold: GOLD,
+  goldDim: GOLD_DIM,
 };
 
-export type ThemeTokens = typeof tokens;
+const light: ThemeTokens = {
+  bgCanvas: '#FFFFFF',
+  bgBase: '#F7F7F5',
+
+  surfaceFlat: '#FFFFFF',
+  surfaceFlatBorder: 'rgba(10,10,11,0.10)',
+
+  surfaceRaised: '#FFFFFF',
+  shadowColor: '#0A0A0B',
+
+  overlayTint: 'rgba(255,255,255,0.72)',
+  blurIntensity: 30,
+
+  textPrimary: '#0A0A0B',
+  textSecondary: '#6B6B6E',
+  textTertiary: '#A0A0A3',
+
+  divider: 'rgba(10,10,11,0.08)',
+
+  btnFill: '#0A0A0B',
+  btnText: '#F5F5F3',
+
+  gold: GOLD,
+  goldDim: GOLD_DIM,
+};
+
+export const themes = { light, dark } as const;
+export type ThemeName = keyof typeof themes;
+
+export const radii = {
+  screen: 22,
+  card: 14,
+  input: 10,
+} as const;
+
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+} as const;
