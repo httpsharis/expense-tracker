@@ -1,56 +1,76 @@
-# Welcome to your Expo app 👋
+Here is a professional, technical product strategy document that officially defines how Saldo will handle these core features. You can add this directly to your project documentation (e.g., as `PRODUCT_STRATEGY.md`).
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+---
 
-## Get started
+# Saldo: Product Strategy & Architecture Decisions (Phase 0)
 
-1. Install dependencies
+**Document Purpose:** To define the core product philosophy, finalize the target audience for Phase 0, and establish the technical mechanisms for ledger management and debt tracking.
 
-   ```bash
-   npm install
-   ```
+---
 
-2. Start the app
+## 1. Core Product Philosophy: "Solo First"
 
-   ```bash
-   npx expo start
-   ```
+Based on market analysis and architectural constraints, Saldo Phase 0 is strictly a **Single-User Pocket Money Manager**, not a multiplayer hostel-management platform.
 
-In the output, you'll find options to open the app in a
+The primary value proposition is offering a lightning-fast, beautifully designed personal expense tracker. The "Group Split" functionality is a secondary feature designed for casual use (e.g., "I paid for lunch, you owe me"), rather than complex, multi-user household accounting.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+### Target Audience Pivot
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+| Characteristic         | Phase 0 Target (The Solo User)          | Excluded for Now (The Hostelite)                     |
+| ---------------------- | --------------------------------------- | ---------------------------------------------------- |
+| **Primary Need** | "Where did my allowance go?"            | "Who owes what for rent and groceries?"              |
+| **App Usage**    | One user logs all their own expenses.   | Multiple users log into a shared group ledger.       |
+| **Debt Focus**   | Casual, occasional splits with friends. | Continuous, highly complex interconnected debts.     |
+| **Architecture** | Single-user database with RLS.          | Multiplayer database with shared Row-Level Security. |
 
-## Get a fresh project
+---
 
-When you're ready, run:
+## 2. Core Feature 1: Month Transitions & Ledger Mechanics
 
-```bash
-npm run reset-project
-```
+Saldo operates on an **Append-Only Ledger System**. We do not store a static "balance" integer; the user's current pocket money is always calculated dynamically from the `balance_entries` table. This ensures perfect financial integrity.
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+To address user demands for flexibility in how their months transition, Saldo will support the following mechanics:
 
-### Other setup steps
+### A. Custom Month Cycles
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Not all users receive their allowance on the 1st of the month.
 
-## Learn more
+* **Implementation:** The `months` table utilizes `started_at` and `ended_at` timestamps. Users can define custom start dates (e.g., the 15th to the 15th), freeing them from rigid calendar months.
 
-To learn more about developing your project with Expo, look at the following resources:
+### B. The Transition Choice: Rollover vs. Clean Slate
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+When a user closes an active month and opens a new one, they are presented with two options for their remaining balance:
 
-## Join the community
+1. **Standard Rollover (Default):** * *Logic:* The app simply calculates the total sum of all past `balance_entries` across all time. The leftover money naturally carries over to the new month.
+2. **Start from Zero (Clean Slate):** * *Logic:* Money cannot magically disappear from a ledger. If a user has $50 left and wants to start the next month at $0, the system will automatically generate a background `expense` entry (Type: `balance_adjustment`, Amount: -$50).
 
-Join our community of developers creating universal apps.
+* *Result:* This balances the ledger to zero mathematically without breaking database integrity.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+---
+
+## 3. Core Feature 2: Casual Splitting ("Debting")
+
+To prevent the user from feeling like an unpaid accountant for their friends, the group splitting feature is designed to be as frictionless as possible for a single operator.
+
+### A. The "Solo Splitting" Architecture
+
+* **The Actor:** Only the authenticated Saldo user inputs data.
+* **The Contacts:** Friends/roommates are strictly plain-text names stored in the `people` table. They do not have Saldo accounts or app access.
+* **The Flow:** When the user pays for a shared bill, they log it once. The app's logic layer automatically generates the underlying `debts` rows.
+
+### B. Simplification over Complexity
+
+Saldo will focus on granular, 1-to-1 debt settlements.
+
+* If Alice owes the User $20 for pizza, the User will simply tap "Settle" next to Alice's name when she hands them cash.
+* The app will *not* attempt to run complex minimum-transaction routing algorithms (e.g., "Alice pays Bob so Bob can pay Charlie") as this requires a multiplayer ecosystem to function effectively.
+
+---
+
+## 4. Engineering Next Steps
+
+With the logic clearly defined, the immediate development pipeline is:
+
+1. **Implement Auth Store:** Finalize Zustand and Supabase Auth routing (Step 1).
+2. **Build the Ledger Hook:** Create the TanStack Query hook that dynamically calculates the total from `balance_entries` to display the Live Balance Header.
+3. **Build the Top-Up/Expense Forms:** Create the UI to insert standard, solo transactions.
