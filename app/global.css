@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-canvas: #FFFFFF;
+    --color-base: #F7F7F5;
+    --color-surface-flat: #FFFFFF;
+    --color-surface-flat-border: rgba(10, 10, 11, 0.10);
+    --color-surface-raised: #FFFFFF;
+    --color-text-primary: #0A0A0B;
+    --color-text-secondary: #6B6B6E;
+    --color-text-tertiary: #A0A0A3;
+    --color-divider: rgba(10, 10, 11, 0.08);
+    --color-btn-fill: #0A0A0B;
+    --color-btn-text: #F5F5F3;
+    --color-gold: #C9A24B;
+    --color-gold-dim: rgba(201, 162, 75, 0.14);
+    
+    --font-heading: "IBMPlexSans_600SemiBold";
+    --font-body: "Roboto_400Regular";
+    --font-body-medium: "Roboto_500Medium";
+    
+    --radius-screen: 22px;
+    --radius-card: 14px;
+    --radius-input: 10px;
+  }
+
+  .dark {
+    --color-canvas: #000000;
+    --color-base: #0A0A0B;
+    --color-surface-flat: #141416;
+    --color-surface-flat-border: rgba(255, 255, 255, 0.08);
+    --color-surface-raised: #18181B;
+    --color-text-primary: #F5F5F3;
+    --color-text-secondary: #9C9C9F;
+    --color-text-tertiary: #5E5E61;
+    --color-divider: rgba(255, 255, 255, 0.08);
+    --color-btn-fill: #F2F2F0;
+    --color-btn-text: #0A0A0B;
+  }
+}
