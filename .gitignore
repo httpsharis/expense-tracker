@@ -47,3 +47,14 @@ example
 node_modules/
 .expo/.env
 .env
+
+# Supabase internal state
+supabase/.temp
+supabase/.branches
+# Google Antigravity local skills and metadata
+.agent/
+.agents/
+.claude/
+.vscode/
+.env
+supabase/.temp
