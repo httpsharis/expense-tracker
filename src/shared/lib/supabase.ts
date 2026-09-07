@@ -83,8 +83,8 @@ export function createSupabaseClient(
   return createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: {
       storage: safeStorage,
-      persistSession: false, // Clerk handles session persistence
-      autoRefreshToken: false, // Clerk handles token refreshing
+      persistSession: false,
+      autoRefreshToken: false,
       detectSessionInUrl: false,
     },
     global: {
@@ -93,7 +93,7 @@ export function createSupabaseClient(
         const headers = new Headers(options.headers);
 
         if (token) {
-          headers.set('Authorization', `Bearer ${token}`);
+          headers.set("Authorization", `Bearer ${token}`);
         }
 
         return fetch(url, {

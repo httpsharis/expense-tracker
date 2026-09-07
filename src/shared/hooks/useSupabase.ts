@@ -1,4 +1,3 @@
-// src/shared/hooks/useSupabase.ts (or wherever your hook is placed)
 import { useAuth } from "@clerk/expo";
 import { createSupabaseClient } from "@shared/lib/supabase";
 import { useMemo } from "react";
@@ -8,8 +7,16 @@ export function useSupabase() {
 
   const client = useMemo(() => {
     return createSupabaseClient(async () => {
-      // Must match the Clerk JWT template named "supabase"
-      return await getToken({ template: "supabase" });
+      try {
+        // 1. Try fetching the dedicated Supabase template
+        return await getToken({ template: "supabase" });
+      } catch (err) {
+        console.warn(
+          "[useSupabase] Supabase JWT template missing in Clerk. Falling back to default token."
+        );
+        // 2. Fallback so queries don't throw fatal exceptions
+        return await getToken();
+      }
     });
   }, [userId]);
 
