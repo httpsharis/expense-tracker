@@ -1,11 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Database } from '@shared/types/database.types';
-import { createClient, SupportedStorage } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, SupportedStorage } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
 const memoryStore: Record<string, string> = {};
 
-const safeStorage: SupportedStorage = {
+export const safeStorage: SupportedStorage = {
   getItem: async (key: string): Promise<string | null> => {
     if (Platform.OS === 'web') {
       try {
@@ -67,16 +67,52 @@ const safeStorage: SupportedStorage = {
   },
 };
 
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey =
+  process.env.EXPO_PUBLIC_SUPABASE_KEY ||
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  '';
 
-export const supabase = createClient<Database>(
-  process.env.EXPO_PUBLIC_SUPABASE_URL || '',
-  process.env.EXPO_PUBLIC_SUPABASE_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
-  {
+/**
+ * Creates an authenticated Supabase client configured to use Clerk JWTs.
+ * Injects Clerk's session token into each fetch request so PostgreSQL RLS rules pass.
+ */
+export function createSupabaseClient(
+  getToken: () => Promise<string | null>
+): SupabaseClient<Database> {
+  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: {
       storage: safeStorage,
-      autoRefreshToken: true,
-      persistSession: true,
+      persistSession: false, // Clerk handles session persistence
+      autoRefreshToken: false, // Clerk handles token refreshing
       detectSessionInUrl: false,
     },
-  }
-);
+    global: {
+      fetch: async (url, options = {}) => {
+        const token = await getToken();
+        const headers = new Headers(options.headers);
+
+        if (token) {
+          headers.set('Authorization', `Bearer ${token}`);
+        }
+
+        return fetch(url, {
+          ...options,
+          headers,
+        });
+      },
+    },
+  });
+}
+
+/**
+ * Fallback client for unauthenticated/public reads (if any).
+ */
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: safeStorage,
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false,
+  },
+});
