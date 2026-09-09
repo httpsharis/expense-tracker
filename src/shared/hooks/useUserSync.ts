@@ -12,18 +12,22 @@ export const useUserSync = () => {
   useEffect(() => {
     if (!isLoaded || !user) return;
 
+    let isCancelled = false;
+
     const syncUser = async () => {
       try {
         // 1. Fetch user profile (maybeSingle prevents PGRST116 errors on new accounts)
         const { data: existingUser, error: fetchError } = await authSupabase
           .from("profiles")
-          .select("id, currency")
+          .select("id, currency, onboarding_completed_at")
           .eq("id", user.id)
           .maybeSingle();
 
+        if (isCancelled) return;
+
         if (fetchError) {
           console.error("Error fetching user profile:", fetchError.message);
-          setNeedsOnboarding(true);
+          // Preserve previous needsOnboarding value on fetch errors instead of forcing it to true
           return;
         }
 
@@ -31,6 +35,10 @@ export const useUserSync = () => {
         if (existingUser) {
           if (existingUser.currency) {
             setCurrency(existingUser.currency);
+          }
+
+          // Mark onboarding complete only when onboarding_completed_at flag is present
+          if (existingUser.onboarding_completed_at) {
             setNeedsOnboarding(false);
           } else {
             setNeedsOnboarding(true);
@@ -55,12 +63,13 @@ export const useUserSync = () => {
             },
             { onConflict: "id" }
           )
-          .select("currency")
+          .select("currency, onboarding_completed_at")
           .maybeSingle();
+
+        if (isCancelled) return;
 
         if (insertError) {
           console.error("Error upserting user profile:", insertError.message);
-          setNeedsOnboarding(true);
           return;
         }
 
@@ -72,10 +81,13 @@ export const useUserSync = () => {
         setNeedsOnboarding(true);
       } catch (err: any) {
         console.error("Unexpected error in useUserSync:", err?.message || err);
-        setNeedsOnboarding(true);
       }
     };
 
     syncUser();
-  }, [isLoaded, user?.id]);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isLoaded, user?.id, authSupabase, setCurrency, setNeedsOnboarding]);
 };

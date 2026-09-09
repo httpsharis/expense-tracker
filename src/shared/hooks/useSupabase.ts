@@ -8,17 +8,21 @@ export function useSupabase() {
   const client = useMemo(() => {
     return createSupabaseClient(async () => {
       try {
-        // 1. Try fetching the dedicated Supabase template
-        return await getToken({ template: "supabase" });
-      } catch (err) {
-        console.warn(
-          "[useSupabase] Supabase JWT template missing in Clerk. Falling back to default token."
-        );
-        // 2. Fallback so queries don't throw fatal exceptions
+        // First attempt using the custom "supabase" template if configured in Clerk
+        const token = await getToken({ template: "supabase" });
+        if (token) return token;
+      } catch {
+        // Fall back to standard session token containing Clerk sub claim
+      }
+
+      try {
         return await getToken();
+      } catch (err) {
+        console.error("[useSupabase] Failed to retrieve Clerk token:", err);
+        return null;
       }
     });
-  }, [userId]);
+  }, [userId, getToken]);
 
   return client;
 }

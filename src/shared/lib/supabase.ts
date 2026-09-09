@@ -67,11 +67,19 @@ export const safeStorage: SupportedStorage = {
   },
 };
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey =
-  process.env.EXPO_PUBLIC_SUPABASE_KEY ||
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  '';
+const rawSupabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const rawSupabaseAnonKey =
+  process.env.EXPO_PUBLIC_SUPABASE_KEY ??
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!rawSupabaseUrl || !rawSupabaseAnonKey) {
+  throw new Error(
+    "Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_KEY. Check your Expo environment configuration."
+  );
+}
+
+export const supabaseUrl: string = rawSupabaseUrl;
+export const supabaseAnonKey: string = rawSupabaseAnonKey;
 
 /**
  * Creates an authenticated Supabase client configured to use Clerk JWTs.
