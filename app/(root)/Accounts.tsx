@@ -19,6 +19,12 @@ import { useSupabase } from "../../src/shared/hooks/useSupabase";
 import { useUserStore } from "../../store/userStore";
 
 export type AccountType = "cash" | "bank" | "wallet" | "savings";
+export type AccountType =
+  | "cash"
+  | "bank"
+  | "credit_card"
+  | "wallet"
+  | "savings";
 
 interface AccountItem {
   id: string;
@@ -32,6 +38,7 @@ const ACCOUNT_TYPE_ICONS: Record<AccountType, keyof typeof Ionicons.glyphMap> =
   {
     cash: "cash-outline",
     bank: "business-outline",
+    credit_card: "card-outline",
     wallet: "wallet-outline",
     savings: "server-outline",
   };
@@ -71,19 +78,25 @@ export default function AccountsScreen() {
   // 2. Set Default Mutation
   const setDefaultMutation = useMutation({
     mutationFn: async (targetId: string) => {
-      // Step A: Reset all accounts to false
-      await authSupabase
+      if (!user?.id) throw new Error("User not authenticated");
+
+      // Step A: Reset current default account to false first to respect the partial unique index
+      const { error: resetError } = await authSupabase
         .from("accounts")
         .update({ is_default: false })
-        .eq("user_id", user!.id);
+        .eq("user_id", user.id)
+        .eq("is_default", true);
+
+      if (resetError) throw resetError;
 
       // Step B: Set chosen account as default
-      const { error } = await authSupabase
+      const { error: setError } = await authSupabase
         .from("accounts")
         .update({ is_default: true })
-        .eq("id", targetId);
+        .eq("id", targetId)
+        .eq("user_id", user.id);
 
-      if (error) throw error;
+      if (setError) throw setError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts", user?.id] });
@@ -93,6 +106,7 @@ export default function AccountsScreen() {
   // 3. Save Account Mutation (Create / Edit)
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!user?.id) throw new Error("User not authenticated");
       if (!accountName.trim()) {
         throw new Error("Account name cannot be empty");
       }
@@ -111,7 +125,7 @@ export default function AccountsScreen() {
       } else {
         // Create new
         const { error } = await authSupabase.from("accounts").insert({
-          user_id: user!.id,
+          user_id: user.id,
           name: accountName.trim(),
           type: accountType,
           currency: storeCurrency || "USD",
@@ -306,9 +320,33 @@ export default function AccountsScreen() {
                         key={type}
                         onPress={() => setAccountType(type)}
                         className={`px-4 py-2.5 rounded-xl border ${
+                {(
+                  [
+                    "bank",
+                    "cash",
+                    "credit_card",
+                    "wallet",
+                    "savings",
+                  ] as AccountType[]
+                ).map((type) => {
+                  const isSelected = accountType === type;
+                  return (
+                    <Pressable
+                      key={type}
+                      onPress={() => setAccountType(type)}
+                      className={`px-4 py-2.5 rounded-xl border ${
+                        isSelected
+                          ? "bg-zinc-900 dark:bg-zinc-100 border-transparent"
+                          : "bg-white dark:bg-[#141416] border-zinc-200 dark:border-zinc-800"
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs font-semibold capitalize ${
                           isSelected
                             ? "bg-zinc-900 dark:bg-zinc-100 border-transparent"
                             : "bg-white dark:bg-[#141416] border-zinc-200 dark:border-zinc-800"
+                            ? "text-white dark:text-zinc-950"
+                            : "text-zinc-800 dark:text-zinc-200"
                         }`}
                       >
                         <Text
@@ -324,6 +362,11 @@ export default function AccountsScreen() {
                     );
                   },
                 )}
+                        {type.replace("_", " ")}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
 

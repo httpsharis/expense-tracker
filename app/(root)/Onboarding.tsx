@@ -139,6 +139,7 @@ export default function Onboarding() {
             image_url: user.imageUrl || null,
             currency: selectedCurrency.code,
             month_start_day: 1,
+            onboarding_completed_at: new Date().toISOString(),
           },
           { onConflict: "id" },
         );
@@ -177,17 +178,26 @@ export default function Onboarding() {
       }
 
       // 3. Append the initial balance entry to the ledger
+      // 3. Record initial starting balance as an income transaction (the ledger records this without RLS violation)
       if (initialAmount > 0) {
-        const { error: balanceError } = await authSupabase
-          .from("balance_entries")
+        const { error: balanceError } =
+          await authSupabase.from("balance_entries");
+        const { error: transactionError } = await authSupabase
+          .from("transactions")
           .insert({
             user_id: user.id,
             account_id: accountId,
             delta: initialAmount,
             reason: "top_up", // <-- 'top_up' satisfies the existing check constraint
+            type: "income",
+            amount: initialAmount,
+            description: "Starting Balance",
+            input_method: "manual",
+            status: "completed",
           });
 
         if (balanceError) throw balanceError;
+        if (transactionError) throw transactionError;
       }
 
       // 4. Synchronize local store and route to dashboard

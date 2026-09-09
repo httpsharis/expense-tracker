@@ -5,8 +5,9 @@ export const onboardingSchema = z.object({
         .string()
         .min(1, 'Please enter a starting balance')
         .refine((v) => {
-            const parsed = parseFloat(v.replace(/,/g, ""))
-            return !Number.isNaN(parsed) && parsed > 0
+            const sanitized = v.replace(/,/g, "");
+            return /^\d+(?:\.\d+)?$/.test(sanitized) && Number(sanitized) > 0;
+            return /^\d+(?:\.\d+)?$/.test(sanitized) && Number.isFinite(Number(sanitized)) && Number(sanitized) >= 0;
         }, 'Please enter a valid starting balance')
 });
 
