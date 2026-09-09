@@ -16,6 +16,7 @@ CREATE TABLE public.profiles (
     image_url TEXT,
     currency TEXT NOT NULL DEFAULT 'USD',
     month_start_day SMALLINT NOT NULL DEFAULT 1,
+    onboarding_completed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -216,8 +217,8 @@ CREATE POLICY "own budgets" ON public.budgets FOR ALL USING ((auth.jwt()->>'sub'
 CREATE POLICY "own subscriptions" ON public.subscriptions FOR ALL USING ((auth.jwt()->>'sub') = user_id);
 CREATE POLICY "own transactions" ON public.transactions FOR ALL USING ((auth.jwt()->>'sub') = user_id);
 CREATE POLICY "own balance entries" ON public.balance_entries FOR SELECT USING ((auth.jwt()->>'sub') = user_id);
--- NOTE: no INSERT/UPDATE/DELETE policy on balance_entries for normal users —
--- only the SECURITY DEFINER trigger functions should write to this table.
+CREATE POLICY "insert own balance entries" ON public.balance_entries FOR INSERT WITH CHECK ((auth.jwt()->>'sub') = user_id);
+-- NOTE: no UPDATE or DELETE policies on balance_entries — this maintains the append-only ledger invariant.
 CREATE POLICY "own groups" ON public.groups FOR ALL USING ((auth.jwt()->>'sub') = user_id);
 CREATE POLICY "own group members" ON public.group_members FOR ALL USING ((auth.jwt()->>'sub') = user_id);
 CREATE POLICY "own splits" ON public.transaction_splits FOR ALL USING ((auth.jwt()->>'sub') = user_id);
@@ -227,6 +228,7 @@ CREATE POLICY "own settlements" ON public.settlements FOR ALL USING ((auth.jwt()
 -- 12. INDEXES
 -- ==========================================
 CREATE INDEX idx_accounts_user ON public.accounts(user_id);
+CREATE UNIQUE INDEX idx_accounts_user_default ON public.accounts(user_id) WHERE is_default = TRUE;
 CREATE INDEX idx_transactions_user_date ON public.transactions(user_id, date DESC);
 CREATE INDEX idx_transactions_account ON public.transactions(account_id);
 CREATE INDEX idx_transaction_splits_transaction ON public.transaction_splits(transaction_id);
@@ -235,3 +237,132 @@ CREATE INDEX idx_settlements_split ON public.settlements(transaction_split_id);
 CREATE INDEX idx_subscriptions_user ON public.subscriptions(user_id, status);
 CREATE INDEX idx_budgets_user_month ON public.budgets(user_id, month_date);
 CREATE INDEX idx_group_members_group ON public.group_members(group_id);
+
+-- ==========================================
+-- 13. TRIGGERS FOR APPEND-ONLY LEDGER (SECURITY DEFINER)
+-- ==========================================
+
+-- Trigger function for transactions -> balance_entries
+CREATE OR REPLACE FUNCTION public.handle_transaction_balance_entry()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    -- Only write balance entries for completed transactions
+    IF NEW.status = 'completed' THEN
+        IF NEW.type = 'income' THEN
+            INSERT INTO public.balance_entries (user_id, account_id, transaction_id, delta, reason)
+            VALUES (NEW.user_id, NEW.account_id, NEW.id, NEW.amount, 'transaction');
+        ELSIF NEW.type = 'expense' THEN
+            INSERT INTO public.balance_entries (user_id, account_id, transaction_id, delta, reason)
+            VALUES (NEW.user_id, NEW.account_id, NEW.id, -NEW.amount, 'transaction');
+        ELSIF NEW.type = 'transfer' THEN
+            -- Debit origin account
+            INSERT INTO public.balance_entries (user_id, account_id, transaction_id, delta, reason)
+            VALUES (NEW.user_id, NEW.account_id, NEW.id, -NEW.amount, 'transaction');
+            
+            -- Credit destination account (if provided)
+            IF NEW.transfer_account_id IS NOT NULL THEN
+                INSERT INTO public.balance_entries (user_id, account_id, transaction_id, delta, reason)
+                VALUES (NEW.user_id, NEW.transfer_account_id, NEW.id, NEW.amount, 'transaction');
+            END IF;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_transaction_balance_entry ON public.transactions;
+CREATE TRIGGER trg_transaction_balance_entry
+    AFTER INSERT ON public.transactions
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_transaction_balance_entry();
+
+-- Trigger function for settlements -> balance_entries
+CREATE OR REPLACE FUNCTION public.handle_settlement_balance_entry()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_split_direction TEXT;
+    v_share_amount DECIMAL(12, 2);
+    v_total_settled DECIMAL(12, 2);
+BEGIN
+    -- Fetch direction and share amount from the referenced split
+    SELECT direction, share_amount
+    INTO v_split_direction, v_share_amount
+    FROM public.transaction_splits
+    WHERE id = NEW.transaction_split_id;
+
+    -- If settled from balance, write ledger entry
+    IF NEW.settlement_mode = 'from_balance' AND NEW.account_id IS NOT NULL THEN
+        IF v_split_direction = 'owed_to_me' THEN
+            INSERT INTO public.balance_entries (user_id, account_id, settlement_id, delta, reason)
+            VALUES (NEW.user_id, NEW.account_id, NEW.id, NEW.amount, 'settlement');
+        ELSIF v_split_direction = 'i_owe' THEN
+            INSERT INTO public.balance_entries (user_id, account_id, settlement_id, delta, reason)
+            VALUES (NEW.user_id, NEW.account_id, NEW.id, -NEW.amount, 'settlement');
+        END IF;
+    END IF;
+
+    -- Update split settlement status
+    SELECT COALESCE(SUM(amount), 0)
+    INTO v_total_settled
+    FROM public.settlements
+    WHERE transaction_split_id = NEW.transaction_split_id;
+
+    IF v_total_settled >= v_share_amount THEN
+        UPDATE public.transaction_splits
+        SET status = 'settled'
+        WHERE id = NEW.transaction_split_id;
+    ELSE
+        UPDATE public.transaction_splits
+        SET status = 'partial'
+        WHERE id = NEW.transaction_split_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_settlement_balance_entry ON public.settlements;
+CREATE TRIGGER trg_settlement_balance_entry
+    AFTER INSERT ON public.settlements
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_settlement_balance_entry();
+
+-- ==========================================
+-- 14. TRIGGERS FOR UPDATED_AT TIMESTAMP
+-- ==========================================
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_profiles_updated_at ON public.profiles;
+CREATE TRIGGER trg_profiles_updated_at
+    BEFORE UPDATE ON public.profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_accounts_updated_at ON public.accounts;
+CREATE TRIGGER trg_accounts_updated_at
+    BEFORE UPDATE ON public.accounts
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_budgets_updated_at ON public.budgets;
+CREATE TRIGGER trg_budgets_updated_at
+    BEFORE UPDATE ON public.budgets
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
