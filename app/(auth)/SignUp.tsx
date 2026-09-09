@@ -251,6 +251,7 @@ export default function SignUp() {
                 label="Continue"
                 onPress={handleSubmit(onSignUpSubmit)}
                 loading={submitting}
+                disabled={isGoogleAuth || submitting}
                 className="mt-1"
               />
 

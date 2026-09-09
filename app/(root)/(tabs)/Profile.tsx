@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { getErrorMessage } from "@shared/lib/errors";
+import { useUserStore } from "../../../store/userStore";
 
 export default function ProfileScreen() {
   const { signOut } = useClerk();
@@ -42,6 +43,7 @@ export default function ProfileScreen() {
           setLoggingOut(true);
           try {
             await signOut();
+            useUserStore.getState().resetUserStore();
             router.replace("/(auth)/SignIn");
           } catch (err: unknown) {
             setLoggingOut(false);

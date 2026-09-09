@@ -6,12 +6,17 @@ import { ActivityIndicator, View } from "react-native";
 import { useUserStore } from "../../store/userStore";
 
 export default function RootLayout() {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded, userId } = useAuth();
   const needsOnboarding = useUserStore((state) => state.needsOnboarding);
+  const setNeedsOnboarding = useUserStore((state) => state.setNeedsOnboarding);
   const pathname = usePathname();
   const [minLoadOne, setMinLoadDone] = useState(false);
 
   useUserSync();
+
+  useEffect(() => {
+    setNeedsOnboarding(null);
+  }, [userId, setNeedsOnboarding]);
 
   useEffect(() => {
     const t = setTimeout(() => setMinLoadDone(true), 1500);
@@ -34,8 +39,14 @@ export default function RootLayout() {
     );
   }
 
-  if (needsOnboarding && pathname !== "/Onboarding") {
+  const isOnboardingRoute = pathname.toLowerCase().includes("onboarding");
+
+  if (needsOnboarding && !isOnboardingRoute) {
     return <Redirect href="/(root)/Onboarding" />;
+  }
+
+  if (!needsOnboarding && isOnboardingRoute) {
+    return <Redirect href="/(root)/(tabs)" />;
   }
 
   return <Slot />;

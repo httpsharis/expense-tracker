@@ -223,6 +223,7 @@ export default function SignIn() {
               label="Sign In"
               onPress={handleSubmit(onSignInSubmit)}
               loading={submitting}
+              disabled={isGoogleAuth || submitting}
               className="mt-1"
             />
 
