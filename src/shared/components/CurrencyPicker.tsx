@@ -1,7 +1,6 @@
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import cc from "currency-codes";
-import * as currencySymbolMap from "currency-symbol-map";
 import { useMemo, useState } from "react";
 import {
     FlatList,
@@ -12,9 +11,7 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-const getSymbol: (code: string) => string | undefined =
-  (currencySymbolMap as any).default || currencySymbolMap;
+import { getCurrencySymbol } from "../lib/currency";
 
 export type CurrencyEntry = {
   code: string;
@@ -86,7 +83,7 @@ export const ALL_CURRENCIES: CurrencyEntry[] = cc
   .map((code) => ({
     code,
     name: cc.code(code)?.currency ?? code,
-    symbol: STATIC_SYMBOL_MAP[code] || getSymbol(code) || code,
+    symbol: STATIC_SYMBOL_MAP[code] || getCurrencySymbol(code),
   }))
   .sort((a, b) => a.name.localeCompare(b.name));
 

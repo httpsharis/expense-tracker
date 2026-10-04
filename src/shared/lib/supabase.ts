@@ -1,71 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Database } from '@shared/types/database.types';
-import { createClient, SupabaseClient, SupportedStorage } from '@supabase/supabase-js';
-import { Platform } from 'react-native';
-
-const memoryStore: Record<string, string> = {};
-
-export const safeStorage: SupportedStorage = {
-  getItem: async (key: string): Promise<string | null> => {
-    if (Platform.OS === 'web') {
-      try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          return window.localStorage.getItem(key);
-        }
-        return memoryStore[key] ?? null;
-      } catch {
-        return memoryStore[key] ?? null;
-      }
-    }
-
-    try {
-      return await AsyncStorage.getItem(key);
-    } catch {
-      return memoryStore[key] ?? null;
-    }
-  },
-
-  setItem: async (key: string, value: string): Promise<void> => {
-    if (Platform.OS === 'web') {
-      try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          window.localStorage.setItem(key, value);
-          return;
-        }
-        memoryStore[key] = value;
-      } catch {
-        memoryStore[key] = value;
-      }
-      return;
-    }
-
-    try {
-      await AsyncStorage.setItem(key, value);
-    } catch {
-      memoryStore[key] = value;
-    }
-  },
-
-  removeItem: async (key: string): Promise<void> => {
-    if (Platform.OS === 'web') {
-      try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          window.localStorage.removeItem(key);
-        }
-        delete memoryStore[key];
-      } catch {
-        delete memoryStore[key];
-      }
-      return;
-    }
-
-    try {
-      await AsyncStorage.removeItem(key);
-    } catch {
-      delete memoryStore[key];
-    }
-  },
-};
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const rawSupabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const rawSupabaseAnonKey =
@@ -74,26 +8,35 @@ const rawSupabaseAnonKey =
 
 if (!rawSupabaseUrl || !rawSupabaseAnonKey) {
   throw new Error(
-    "Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_KEY. Check your Expo environment configuration."
+    '[Supabase] Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_KEY.'
   );
 }
 
+// 1. Guaranteed string types (resolves 'string | undefined' error)
 export const supabaseUrl: string = rawSupabaseUrl;
 export const supabaseAnonKey: string = rawSupabaseAnonKey;
 
+const SafeWebSocket = (
+  typeof WebSocket !== 'undefined' ? WebSocket : class { }
+) as unknown as typeof WebSocket;
+
 /**
- * Creates an authenticated Supabase client configured to use Clerk JWTs.
- * Injects Clerk's session token into each fetch request so PostgreSQL RLS rules pass.
+ * Creates an authenticated Supabase client using Clerk JWTs.
  */
 export function createSupabaseClient(
   getToken: () => Promise<string | null>
-): SupabaseClient<Database> {
-  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
+): SupabaseClient<Database, 'public'> {
+  return createClient<Database, 'public'>(supabaseUrl, supabaseAnonKey, {
+    db: {
+      schema: 'public',
+    },
     auth: {
-      storage: safeStorage,
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
+    },
+    realtime: {
+      transport: SafeWebSocket,
     },
     global: {
       fetch: async (url, options = {}) => {
@@ -101,26 +44,55 @@ export function createSupabaseClient(
         const headers = new Headers(options.headers);
 
         if (token) {
-          headers.set("Authorization", `Bearer ${token}`);
+          headers.set('Authorization', `Bearer ${token}`);
         }
 
-        return fetch(url, {
+        const res = await fetch(url, {
           ...options,
           headers,
         });
+
+        // Handle client-server clock skew ("JWT not yet valid") with transparent retry
+        if (!res.ok && res.status === 401) {
+          try {
+            const clone = res.clone();
+            const body = await clone.json();
+            if (
+              typeof body?.message === "string" &&
+              body.message.toLowerCase().includes("not yet valid")
+            ) {
+              // Wait 1.2s for server clock to reach token nbf/iat time
+              await new Promise((resolve) => setTimeout(resolve, 1200));
+              return fetch(url, {
+                ...options,
+                headers,
+              });
+            }
+          } catch {
+            // response was not JSON, return original response
+          }
+        }
+
+        return res;
       },
     },
   });
 }
 
 /**
- * Fallback client for unauthenticated/public reads (if any).
+ * Fallback client instance for unauthenticated reads.
  */
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: safeStorage,
-    autoRefreshToken: false,
-    persistSession: false,
-    detectSessionInUrl: false,
-  },
-});
+export const supabase: SupabaseClient<Database, 'public'> =
+  createClient<Database, 'public'>(supabaseUrl, supabaseAnonKey, {
+    db: {
+      schema: 'public',
+    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    realtime: {
+      transport: SafeWebSocket,
+    },
+  });

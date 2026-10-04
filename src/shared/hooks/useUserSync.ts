@@ -14,20 +14,28 @@ export const useUserSync = () => {
 
     let isCancelled = false;
 
-    const syncUser = async () => {
+    const syncUser = async (attempt = 1) => {
       try {
         // 1. Fetch user profile (maybeSingle prevents PGRST116 errors on new accounts)
         const { data: existingUser, error: fetchError } = await authSupabase
           .from("profiles")
-          .select("id, currency, onboarding_completed_at")
+          .select("id, currency")
           .eq("id", user.id)
           .maybeSingle();
 
         if (isCancelled) return;
 
         if (fetchError) {
-          console.error("Error fetching user profile:", fetchError.message);
-          // Preserve previous needsOnboarding value on fetch errors instead of forcing it to true
+          console.warn(`[useUserSync] Attempt ${attempt} failed:`, fetchError.message);
+          // If token clock skew ("not yet valid"), retry up to 3 times
+          if (attempt < 3 && fetchError.message?.toLowerCase().includes("not yet valid")) {
+            await new Promise((r) => setTimeout(r, 1200));
+            if (!isCancelled) return syncUser(attempt + 1);
+          }
+          // Do not leave app stuck in loading state indefinitely
+          if (useUserStore.getState().needsOnboarding === null) {
+            setNeedsOnboarding(false);
+          }
           return;
         }
 
@@ -37,8 +45,15 @@ export const useUserSync = () => {
             setCurrency(existingUser.currency);
           }
 
-          // Mark onboarding complete only when onboarding_completed_at flag is present
-          if (existingUser.onboarding_completed_at) {
+          // Check whether the user has at least one account to determine onboarding completion
+          const { count, error: countError } = await authSupabase
+            .from("accounts")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id);
+
+          if (isCancelled) return;
+
+          if (!countError && typeof count === "number" && count > 0) {
             setNeedsOnboarding(false);
           } else {
             setNeedsOnboarding(true);
@@ -63,7 +78,7 @@ export const useUserSync = () => {
             },
             { onConflict: "id" }
           )
-          .select("currency, onboarding_completed_at")
+          .select("currency")
           .maybeSingle();
 
         if (isCancelled) return;
@@ -76,7 +91,7 @@ export const useUserSync = () => {
         if (newProfile?.currency) {
           setCurrency(newProfile.currency);
         }
-        
+
         // Needs onboarding so they pick their starting currency & balance
         setNeedsOnboarding(true);
       } catch (err: any) {
