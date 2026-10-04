@@ -511,6 +511,13 @@ export default function TransactionsScreen() {
         transaction={selectedTx}
         onClose={() => setSelectedTx(null)}
         onDelete={handleDeleteTx}
+        onEdit={(item) => {
+          setSelectedTx(null);
+          router.push({
+            pathname: "/(root)/(tabs)/AddTransactions",
+            params: { editId: item.id },
+          } as any);
+        }}
       />
     </SafeAreaView>
   );

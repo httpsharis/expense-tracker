@@ -1,5 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
-import React from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 
 import { formatCurrency } from "@shared/lib/currency";
@@ -9,6 +7,7 @@ export function TransactionDetailModal({
   transaction,
   onClose,
   onDelete,
+  onEdit,
 }: TransactionDetailModalProps) {
   if (!transaction) return null;
 
@@ -82,21 +81,27 @@ export function TransactionDetailModal({
           </View>
 
           {/* Action Buttons */}
-          <View className="flex-row items-center gap-3 mt-2">
+          <View className="flex-row items-center gap-2.5 mt-2">
             {onDelete ? (
               <Pressable
                 onPress={() => onDelete(transaction)}
                 className="flex-1 h-12 rounded-2xl bg-rose-50 border border-rose-200 items-center justify-center active:opacity-75"
               >
-                <Text className="text-xs font-bold text-rose-600">
-                  Delete
-                </Text>
+                <Text className="text-xs font-bold text-rose-600">Delete</Text>
+              </Pressable>
+            ) : null}
+            {onEdit ? (
+              <Pressable
+                onPress={() => onEdit(transaction)}
+                className="flex-1 h-12 rounded-2xl bg-white border border-[#E4E7EC] items-center justify-center active:opacity-75 shadow-2xs"
+              >
+                <Text className="text-xs font-bold text-[#0F172A]">Edit</Text>
               </Pressable>
             ) : null}
             <Pressable
               onPress={onClose}
               className={`h-12 rounded-2xl bg-[#0F172A] items-center justify-center active:opacity-85 ${
-                onDelete ? "flex-1" : "w-full"
+                onDelete || onEdit ? "flex-1" : "w-full"
               }`}
             >
               <Text className="text-xs font-bold text-white">Done</Text>

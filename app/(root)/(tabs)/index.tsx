@@ -455,6 +455,13 @@ export default function HomeScreen() {
         <TransactionDetailModal
           transaction={selectedTx}
           onClose={() => setSelectedTx(null)}
+          onEdit={(item) => {
+            setSelectedTx(null);
+            router.push({
+              pathname: "/(root)/(tabs)/AddTransactions",
+              params: { editId: item.id },
+            } as any);
+          }}
         />
 
         <AccountSwitcherModal

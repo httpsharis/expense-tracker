@@ -5,7 +5,8 @@ import {
     deleteTransaction,
     getTransactions,
     TransactionFilter,
-    TransactionInsert
+    TransactionInsert,
+    updateTransaction,
 } from "../../services/transactions";
 import { useSupabase } from "../../src/shared/hooks/useSupabase";
 import { queryKeys } from "../keys";
@@ -67,6 +68,38 @@ export function useCreateTransactionMutation() {
 }
 
 /**
+ * Mutation to update an existing transaction.
+ */
+export function useUpdateTransactionMutation() {
+  const { user } = useUser();
+  const supabase = useSupabase();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: Partial<TransactionInsert>;
+    }) => {
+      return updateTransaction(supabase, id, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["transactions"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.accountsWithBalances(user?.id),
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["budgets"],
+      });
+    },
+  });
+}
+
+/**
  * Mutation to delete a transaction.
  */
 export function useDeleteTransactionMutation() {
@@ -91,3 +124,5 @@ export function useDeleteTransactionMutation() {
     },
   });
 }
+
+

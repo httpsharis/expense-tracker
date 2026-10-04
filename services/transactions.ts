@@ -358,6 +358,52 @@ export async function createTransaction(
   return fallbackTx;
 }
 
+export async function updateTransaction(
+  supabase: SupabaseClient<Database>,
+  transactionId: string,
+  payload: Partial<TransactionInsert>
+): Promise<TransactionRow | null> {
+  const idx = LOCAL_TRANSACTIONS_CACHE.findIndex((t) => t.id === transactionId);
+  if (idx >= 0) {
+    LOCAL_TRANSACTIONS_CACHE[idx] = {
+      ...LOCAL_TRANSACTIONS_CACHE[idx],
+      ...payload,
+    };
+  }
+
+  if (!isUUID(transactionId)) {
+    return (LOCAL_TRANSACTIONS_CACHE[idx] as unknown as TransactionRow) || null;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("transactions")
+      .update(payload)
+      .eq("id", transactionId)
+      .select()
+      .single();
+
+    if (!error && data) {
+      const updatedRow = data as TransactionRow;
+      if (idx >= 0) {
+        LOCAL_TRANSACTIONS_CACHE[idx] = {
+          ...LOCAL_TRANSACTIONS_CACHE[idx],
+          ...updatedRow,
+        };
+      }
+      return updatedRow;
+    }
+
+    if (error) {
+      console.warn("[transactions] update remote notice:", error.message);
+    }
+  } catch (err: any) {
+    console.warn("[transactions] update caught exception:", err?.message);
+  }
+
+  return (LOCAL_TRANSACTIONS_CACHE[idx] as unknown as TransactionRow) || null;
+}
+
 /**
  * Deletes a transaction by ID.
  * Removes from local ledger and attempts remote delete.

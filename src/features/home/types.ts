@@ -74,6 +74,7 @@ export interface TransactionDetailModalProps {
   transaction: DetailedTransactionItem | null;
   onClose: () => void;
   onDelete?: (transaction: DetailedTransactionItem) => void;
+  onEdit?: (transaction: DetailedTransactionItem) => void;
 }
 
 export interface AccountSwitcherModalProps {
