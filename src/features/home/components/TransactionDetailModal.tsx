@@ -8,6 +8,7 @@ import type { TransactionDetailModalProps } from "../types";
 export function TransactionDetailModal({
   transaction,
   onClose,
+  onDelete,
 }: TransactionDetailModalProps) {
   if (!transaction) return null;
 
@@ -80,12 +81,27 @@ export function TransactionDetailModal({
             ) : null}
           </View>
 
-          <Pressable
-            onPress={onClose}
-            className="w-full h-12 rounded-2xl bg-[#0F172A] items-center justify-center active:opacity-85 mt-2"
-          >
-            <Text className="text-xs font-bold text-white">Done</Text>
-          </Pressable>
+          {/* Action Buttons */}
+          <View className="flex-row items-center gap-3 mt-2">
+            {onDelete ? (
+              <Pressable
+                onPress={() => onDelete(transaction)}
+                className="flex-1 h-12 rounded-2xl bg-rose-50 border border-rose-200 items-center justify-center active:opacity-75"
+              >
+                <Text className="text-xs font-bold text-rose-600">
+                  Delete
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={onClose}
+              className={`h-12 rounded-2xl bg-[#0F172A] items-center justify-center active:opacity-85 ${
+                onDelete ? "flex-1" : "w-full"
+              }`}
+            >
+              <Text className="text-xs font-bold text-white">Done</Text>
+            </Pressable>
+          </View>
         </Pressable>
       </Pressable>
     </Modal>
