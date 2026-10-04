@@ -1,82 +1,98 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Database } from '@shared/types/database.types';
-import { createClient, SupportedStorage } from '@supabase/supabase-js';
-import { Platform } from 'react-native';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const memoryStore: Record<string, string> = {};
+const rawSupabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const rawSupabaseAnonKey =
+  process.env.EXPO_PUBLIC_SUPABASE_KEY ??
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
-const safeStorage: SupportedStorage = {
-  getItem: async (key: string): Promise<string | null> => {
-    if (Platform.OS === 'web') {
-      try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          return window.localStorage.getItem(key);
-        }
-        return memoryStore[key] ?? null;
-      } catch {
-        return memoryStore[key] ?? null;
-      }
-    }
+if (!rawSupabaseUrl || !rawSupabaseAnonKey) {
+  throw new Error(
+    '[Supabase] Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_KEY.'
+  );
+}
 
-    try {
-      return await AsyncStorage.getItem(key);
-    } catch {
-      return memoryStore[key] ?? null;
-    }
-  },
+// 1. Guaranteed string types (resolves 'string | undefined' error)
+export const supabaseUrl: string = rawSupabaseUrl;
+export const supabaseAnonKey: string = rawSupabaseAnonKey;
 
-  setItem: async (key: string, value: string): Promise<void> => {
-    if (Platform.OS === 'web') {
-      try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          window.localStorage.setItem(key, value);
-          return;
-        }
-        memoryStore[key] = value;
-      } catch {
-        memoryStore[key] = value;
-      }
-      return;
-    }
+const SafeWebSocket = (
+  typeof WebSocket !== 'undefined' ? WebSocket : class { }
+) as unknown as typeof WebSocket;
 
-    try {
-      await AsyncStorage.setItem(key, value);
-    } catch {
-      memoryStore[key] = value;
-    }
-  },
-
-  removeItem: async (key: string): Promise<void> => {
-    if (Platform.OS === 'web') {
-      try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          window.localStorage.removeItem(key);
-        }
-        delete memoryStore[key];
-      } catch {
-        delete memoryStore[key];
-      }
-      return;
-    }
-
-    try {
-      await AsyncStorage.removeItem(key);
-    } catch {
-      delete memoryStore[key];
-    }
-  },
-};
-
-
-export const supabase = createClient<Database>(
-  process.env.EXPO_PUBLIC_SUPABASE_URL || '',
-  process.env.EXPO_PUBLIC_SUPABASE_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
-  {
+/**
+ * Creates an authenticated Supabase client using Clerk JWTs.
+ */
+export function createSupabaseClient(
+  getToken: () => Promise<string | null>
+): SupabaseClient<Database, 'public'> {
+  return createClient<Database, 'public'>(supabaseUrl, supabaseAnonKey, {
+    db: {
+      schema: 'public',
+    },
     auth: {
-      storage: safeStorage,
-      autoRefreshToken: true,
-      persistSession: true,
+      persistSession: false,
+      autoRefreshToken: false,
       detectSessionInUrl: false,
     },
-  }
-);
+    realtime: {
+      transport: SafeWebSocket,
+    },
+    global: {
+      fetch: async (url, options = {}) => {
+        const token = await getToken();
+        const headers = new Headers(options.headers);
+
+        if (token) {
+          headers.set('Authorization', `Bearer ${token}`);
+        }
+
+        const res = await fetch(url, {
+          ...options,
+          headers,
+        });
+
+        // Handle client-server clock skew ("JWT not yet valid") with transparent retry
+        if (!res.ok && res.status === 401) {
+          try {
+            const clone = res.clone();
+            const body = await clone.json();
+            if (
+              typeof body?.message === "string" &&
+              body.message.toLowerCase().includes("not yet valid")
+            ) {
+              // Wait 1.2s for server clock to reach token nbf/iat time
+              await new Promise((resolve) => setTimeout(resolve, 1200));
+              return fetch(url, {
+                ...options,
+                headers,
+              });
+            }
+          } catch {
+            // response was not JSON, return original response
+          }
+        }
+
+        return res;
+      },
+    },
+  });
+}
+
+/**
+ * Fallback client instance for unauthenticated reads.
+ */
+export const supabase: SupabaseClient<Database, 'public'> =
+  createClient<Database, 'public'>(supabaseUrl, supabaseAnonKey, {
+    db: {
+      schema: 'public',
+    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    realtime: {
+      transport: SafeWebSocket,
+    },
+  });

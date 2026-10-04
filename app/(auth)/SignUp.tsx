@@ -1,11 +1,12 @@
 import { useClerk, useSignUp } from "@clerk/expo";
+import { AntDesign, Ionicons } from "@expo/vector-icons";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Button } from "@shared/ui/Button";
 import { useRouter } from "expo-router";
 import { useColorScheme } from "nativewind";
 import { useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
+    ActivityIndicator,
     Alert,
     Pressable,
     Text,
@@ -16,13 +17,14 @@ import {
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Ionicons } from "@expo/vector-icons";
 import { getErrorMessage } from "@shared/lib/errors";
 import {
     codeSchema,
     SignUpSchema,
     signUpSchema,
 } from "@shared/lib/schemas/auth";
+import { useGoogleAuth } from "@shared/lib/useGoogleAuth";
+import { Button } from "@shared/ui/Button";
 import { SaldoLogo } from "@shared/ui/Logo";
 import { TextField } from "@shared/ui/TextField";
 
@@ -30,6 +32,7 @@ export default function SignUp() {
   const { signUp } = useSignUp();
   const { setActive } = useClerk();
   const router = useRouter();
+  const { signInWithGoogle, isAuthenticating: isGoogleAuth } = useGoogleAuth();
 
   const [pendingVerification, setPendingVerification] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -61,7 +64,6 @@ export default function SignUp() {
   });
 
   const rawCode = watchCode("code") || "";
-  // Balanced emblem tone: avoids blinding 100% white
   const logoColor = isDark ? "#E4E4E7" : "#18181B";
 
   const onSignUpSubmit = async (data: SignUpSchema) => {
@@ -70,14 +72,13 @@ export default function SignUp() {
 
     try {
       await signUp.create({
-        emailAddress: data.email.trim(),
+        emailAddress: data.email.trim().toLowerCase(),
         password: data.password,
         firstName: data.firstName.trim(),
         lastName: data.lastName.trim(),
       });
 
       await signUp.verifications.sendEmailCode();
-
       setPendingVerification(true);
     } catch (err: unknown) {
       const message = getErrorMessage(err);
@@ -99,10 +100,11 @@ export default function SignUp() {
           "Verification failed",
           error.message || "Invalid Verification Code.",
         );
+        setSubmitting(false);
         return;
       }
 
-      if (signUp.status === "complete") {
+      if (signUp.status === "complete" && signUp.createdSessionId) {
         await setActive({ session: signUp.createdSessionId });
         setSubmitting(false);
         router.replace("/(root)/(tabs)");
@@ -111,6 +113,7 @@ export default function SignUp() {
         Alert.alert("Verification Complete", "Please check your code");
       }
     } catch (err: unknown) {
+      setSubmitting(false);
       const message = getErrorMessage(err);
       Alert.alert("Verification Failed", message);
     }
@@ -118,7 +121,6 @@ export default function SignUp() {
 
   return (
     <SafeAreaView
-      // Softer surface background: #121316 (dark) / #F8F8F6 (light)
       className="flex-1 bg-[#F8F8F6] dark:bg-[#121316]"
       edges={["top", "bottom"]}
     >
@@ -249,15 +251,46 @@ export default function SignUp() {
                 label="Continue"
                 onPress={handleSubmit(onSignUpSubmit)}
                 loading={submitting}
-                className="mt-2"
+                disabled={isGoogleAuth || submitting}
+                className="mt-1"
               />
+
+              {/* Monochromatic Divider */}
+              <View className="flex-row items-center w-full my-3">
+                <View className="flex-1 h-[1px] bg-zinc-200/90 dark:bg-zinc-800/80" />
+                <Text className="mx-3 text-[11px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-medium">
+                  or
+                </Text>
+                <View className="flex-1 h-[1px] bg-zinc-200/90 dark:bg-zinc-800/80" />
+              </View>
+
+              {/* Google OAuth Action Button */}
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={signInWithGoogle}
+                disabled={isGoogleAuth || submitting}
+                className="w-full h-12 rounded-[10px] flex-row items-center justify-center gap-3 border border-zinc-200/90 dark:border-zinc-800/80 bg-white dark:bg-[#1A1B1E] active:opacity-70"
+              >
+                {isGoogleAuth ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={isDark ? "#E4E4E7" : "#18181B"}
+                  />
+                ) : (
+                  <>
+                    <AntDesign name="google" size={18} color="#EA4335" />
+                    <Text className="text-[15px] font-medium text-zinc-800 dark:text-zinc-200">
+                      Sign up with Google
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
           )}
 
           {/* STEP 2: 6-Digit OTP Verification */}
           {pendingVerification && (
             <View className="w-full gap-4 items-center">
-              {/* Invisible native text input handling keyboard input */}
               <Controller
                 control={codeControl}
                 name="code"
@@ -281,7 +314,7 @@ export default function SignUp() {
                 )}
               />
 
-              {/* Visual 6-slot digit display */}
+              {/* 6-slot visual display */}
               <Pressable
                 onPress={() => codeInputRef.current?.focus()}
                 className="flex-row justify-between w-full"
@@ -295,7 +328,6 @@ export default function SignUp() {
                   return (
                     <View
                       key={index}
-                      // Raised surface: #1C1D21 in dark mode, gentle borders
                       className={`w-12 h-14 rounded-[10px] items-center justify-center border bg-white dark:bg-[#1A1B1E] ${
                         isCurrent
                           ? "border-zinc-800 dark:border-zinc-300"
@@ -320,7 +352,7 @@ export default function SignUp() {
                 label="Verify & Continue"
                 onPress={handleCodeSubmit(onVerifySubmit)}
                 loading={submitting}
-                disabled={rawCode.length < 6}
+                disabled={rawCode.length < 6 || submitting}
                 className="mt-2"
               />
             </View>

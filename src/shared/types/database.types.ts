@@ -10,322 +10,601 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.5"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
       accounts: {
         Row: {
           created_at: string
+          currency: string
           id: string
+          is_default: boolean
           name: string
-          type: 'CASH' | 'BANK' | 'WALLET'
+          type: string
+          updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          currency?: string
           id?: string
+          is_default?: boolean
           name: string
-          type: 'CASH' | 'BANK' | 'WALLET'
+          type: string
+          updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          currency?: string
           id?: string
+          is_default?: boolean
           name?: string
-          type?: 'CASH' | 'BANK' | 'WALLET'
+          type?: string
+          updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "accounts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      balance_entries: {
+        Row: {
+          account_id: string
+          created_at: string
+          delta: number
+          id: string
+          reason: string
+          settlement_id: string | null
+          transaction_id: string | null
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          delta: number
+          id?: string
+          reason: string
+          settlement_id?: string | null
+          transaction_id?: string | null
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          delta?: number
+          id?: string
+          reason?: string
+          settlement_id?: string | null
+          transaction_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "balance_entries_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "balance_entries_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "balance_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_balance_entries_settlement"
+            columns: ["settlement_id"]
+            isOneToOne: false
+            referencedRelation: "settlements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      budgets: {
+        Row: {
+          amount: number
+          category_id: string
+          created_at: string
+          id: string
+          last_alert_sent: string | null
+          last_alert_threshold: number | null
+          month_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          category_id: string
+          created_at?: string
+          id?: string
+          last_alert_sent?: string | null
+          last_alert_threshold?: number | null
+          month_date: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          category_id?: string
+          created_at?: string
+          id?: string
+          last_alert_sent?: string | null
+          last_alert_threshold?: number | null
+          month_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budgets_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budgets_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       categories: {
         Row: {
           created_at: string
+          icon: string | null
+          id: string
+          is_default: boolean
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          icon?: string | null
+          id?: string
+          is_default?: boolean
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          icon?: string | null
+          id?: string
+          is_default?: boolean
+          name?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "categories_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_members: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          linked_profile_id: string | null
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          linked_profile_id?: string | null
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          linked_profile_id?: string | null
+          name?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_members_linked_profile_id_fkey"
+            columns: ["linked_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      groups: {
+        Row: {
+          created_at: string
           id: string
           name: string
-          type: 'INCOME' | 'EXPENSE'
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
-          type: 'INCOME' | 'EXPENSE'
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
-          type?: 'INCOME' | 'EXPENSE'
           user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "groups_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          currency: string
+          email: string
+          id: string
+          image_url: string | null
+          month_start_day: number
+          name: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          email: string
+          id?: string
+          image_url?: string | null
+          month_start_day?: number
+          name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          email?: string
+          id?: string
+          image_url?: string | null
+          month_start_day?: number
+          name?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
-      balance_entries: {
+      settlements: {
         Row: {
+          account_id: string | null
           amount: number
           created_at: string
           id: string
-          month_id: string
-          type: string
+          settlement_mode: string
+          transaction_split_id: string
           user_id: string
         }
         Insert: {
+          account_id?: string | null
           amount: number
           created_at?: string
           id?: string
-          month_id: string
-          type: string
+          settlement_mode: string
+          transaction_split_id: string
           user_id: string
         }
         Update: {
+          account_id?: string | null
           amount?: number
           created_at?: string
           id?: string
-          month_id?: string
-          type?: string
+          settlement_mode?: string
+          transaction_split_id?: string
           user_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "balance_entries_month_id_fkey"
-            columns: ["month_id"]
+            foreignKeyName: "settlements_account_id_fkey"
+            columns: ["account_id"]
             isOneToOne: false
-            referencedRelation: "months"
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settlements_transaction_split_id_fkey"
+            columns: ["transaction_split_id"]
+            isOneToOne: false
+            referencedRelation: "transaction_splits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settlements_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
       }
-      debt_settlements: {
+      subscriptions: {
         Row: {
+          account_id: string | null
           amount: number
-          balance_entry_id: string | null
+          category_id: string | null
           created_at: string
-          debt_id: string
+          frequency: string
           id: string
-          mode: string
-          user_id: string
-        }
-        Insert: {
-          amount: number
-          balance_entry_id?: string | null
-          created_at?: string
-          debt_id: string
-          id?: string
-          mode: string
-          user_id: string
-        }
-        Update: {
-          amount?: number
-          balance_entry_id?: string | null
-          created_at?: string
-          debt_id?: string
-          id?: string
-          mode?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "debt_settlements_balance_entry_id_fkey"
-            columns: ["balance_entry_id"]
-            isOneToOne: false
-            referencedRelation: "balance_entries"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "debt_settlements_debt_id_fkey"
-            columns: ["debt_id"]
-            isOneToOne: false
-            referencedRelation: "debts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      debts: {
-        Row: {
-          amount: number
-          created_at: string
-          direction: string
-          id: string
-          person_id: string
-          split_id: string
+          name: string
+          remind_me: boolean
+          renewal_date: string
           status: string
           user_id: string
         }
         Insert: {
+          account_id?: string | null
           amount: number
+          category_id?: string | null
           created_at?: string
-          direction: string
+          frequency?: string
           id?: string
-          person_id: string
-          split_id: string
+          name: string
+          remind_me?: boolean
+          renewal_date: string
           status?: string
           user_id: string
         }
         Update: {
+          account_id?: string | null
           amount?: number
+          category_id?: string | null
+          created_at?: string
+          frequency?: string
+          id?: string
+          name?: string
+          remind_me?: boolean
+          renewal_date?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transaction_splits: {
+        Row: {
+          created_at: string
+          direction: string
+          group_member_id: string
+          id: string
+          is_payer: boolean
+          share_amount: number
+          status: string
+          transaction_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          direction: string
+          group_member_id: string
+          id?: string
+          is_payer?: boolean
+          share_amount: number
+          status?: string
+          transaction_id: string
+          user_id: string
+        }
+        Update: {
           created_at?: string
           direction?: string
+          group_member_id?: string
           id?: string
-          person_id?: string
-          split_id?: string
+          is_payer?: boolean
+          share_amount?: number
           status?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "debts_person_id_fkey"
-            columns: ["person_id"]
-            isOneToOne: false
-            referencedRelation: "people"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "debts_split_id_fkey"
-            columns: ["split_id"]
-            isOneToOne: false
-            referencedRelation: "splits"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      months: {
-        Row: {
-          created_at: string
-          ended_at: string | null
-          id: string
-          name: string
-          started_at: string
-          status: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          ended_at?: string | null
-          id?: string
-          name: string
-          started_at?: string
-          status?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          ended_at?: string | null
-          id?: string
-          name?: string
-          started_at?: string
-          status?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      people: {
-        Row: {
-          created_at: string
-          id: string
-          name: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          name: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          name?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      splits: {
-        Row: {
-          created_at: string
-          id: string
-          num_people: number
-          payer_id: string | null
-          total_amount: number
-          transaction_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          num_people: number
-          payer_id?: string | null
-          total_amount: number
-          transaction_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          num_people?: number
-          payer_id?: string | null
-          total_amount?: number
           transaction_id?: string
           user_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "splits_payer_id_fkey"
-            columns: ["payer_id"]
+            foreignKeyName: "transaction_splits_group_member_id_fkey"
+            columns: ["group_member_id"]
             isOneToOne: false
-            referencedRelation: "people"
+            referencedRelation: "group_members"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "splits_transaction_id_fkey"
+            foreignKeyName: "transaction_splits_transaction_id_fkey"
             columns: ["transaction_id"]
             isOneToOne: false
             referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_splits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
       }
       transactions: {
         Row: {
+          account_id: string
           amount: number
-          category: string
+          category_id: string | null
           created_at: string
           date: string
+          description: string | null
+          flag_reason: string | null
           id: string
+          input_method: string
+          is_flagged: boolean
           is_group: boolean
-          month_id: string
-          notes: string | null
+          status: string
+          subscription_id: string | null
+          transfer_account_id: string | null
+          type: string
           user_id: string
+          voice_transcript: string | null
         }
         Insert: {
+          account_id: string
           amount: number
-          category: string
+          category_id?: string | null
           created_at?: string
           date?: string
+          description?: string | null
+          flag_reason?: string | null
           id?: string
+          input_method?: string
+          is_flagged?: boolean
           is_group?: boolean
-          month_id: string
-          notes?: string | null
+          status?: string
+          subscription_id?: string | null
+          transfer_account_id?: string | null
+          type: string
           user_id: string
+          voice_transcript?: string | null
         }
         Update: {
+          account_id?: string
           amount?: number
-          category?: string
+          category_id?: string | null
           created_at?: string
           date?: string
+          description?: string | null
+          flag_reason?: string | null
           id?: string
+          input_method?: string
+          is_flagged?: boolean
           is_group?: boolean
-          month_id?: string
-          notes?: string | null
+          status?: string
+          subscription_id?: string | null
+          transfer_account_id?: string | null
+          type?: string
           user_id?: string
+          voice_transcript?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "transactions_month_id_fkey"
-            columns: ["month_id"]
+            foreignKeyName: "transactions_account_id_fkey"
+            columns: ["account_id"]
             isOneToOne: false
-            referencedRelation: "months"
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_transfer_account_id_fkey"
+            columns: ["transfer_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -354,12 +633,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -383,11 +662,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -408,11 +687,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -433,11 +712,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -450,11 +729,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -464,6 +743,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

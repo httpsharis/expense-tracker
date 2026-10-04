@@ -15,6 +15,13 @@ export interface DebtSummary {
 }
 
 /**
+ * Calculates current ledger balance by summing signed deltas from balance_entries.
+ */
+export function calculateLedgerBalance(entries: { delta: number }[]): number {
+    return entries.reduce((acc, entry) => acc + Number(entry.delta), 0);
+}
+
+/**
  * Calculates current period balance: Top-ups minus (Expenses + From-Balance Settlements).
  */
 export function calculatePeriodBalance(entries: BalanceEntrySummary[]): number {
