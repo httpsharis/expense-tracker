@@ -1,9 +1,10 @@
 import { useAuth } from "@clerk/expo";
+import { UniversalPromptModal } from "@shared/components";
 import { useUserSync } from "@shared/hooks/useUserSync";
+import { useUserStore } from "@store/userStore";
 import { Redirect, Slot, usePathname } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { useUserStore } from "../../store/userStore";
 
 export default function RootLayout() {
   const { isSignedIn, isLoaded, userId } = useAuth();
@@ -15,11 +16,18 @@ export default function RootLayout() {
   useUserSync();
 
   useEffect(() => {
-    setNeedsOnboarding(null);
+    // Fallback safeguard so the screen is never stuck if network or sync stalls
+    const fallbackTimer = setTimeout(() => {
+      if (useUserStore.getState().needsOnboarding === null) {
+        setNeedsOnboarding(false);
+      }
+    }, 2500);
+
+    return () => clearTimeout(fallbackTimer);
   }, [userId, setNeedsOnboarding]);
 
   useEffect(() => {
-    const t = setTimeout(() => setMinLoadDone(true), 1500);
+    const t = setTimeout(() => setMinLoadDone(true), 1200);
     return () => clearTimeout(t);
   }, []);
 
@@ -49,5 +57,10 @@ export default function RootLayout() {
     return <Redirect href="/(root)/(tabs)" />;
   }
 
-  return <Slot />;
+  return (
+    <>
+      <Slot />
+      <UniversalPromptModal />
+    </>
+  );
 }

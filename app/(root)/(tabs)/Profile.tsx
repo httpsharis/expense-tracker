@@ -5,7 +5,6 @@ import { useColorScheme } from "nativewind";
 import { useState } from "react";
 import {
     ActivityIndicator,
-    Alert,
     Text,
     TouchableOpacity,
     View,
@@ -13,7 +12,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { getErrorMessage } from "@shared/lib/errors";
-import { useUserStore } from "../../../store/userStore";
+import { usePrompt } from "@store/promptStore";
+import { useUserStore } from "@store/userStore";
 
 export default function ProfileScreen() {
   const { signOut } = useClerk();
@@ -33,25 +33,32 @@ export default function ProfileScreen() {
     (user?.firstName?.[0] || "U").toUpperCase() +
     (user?.lastName?.[0] || "").toUpperCase();
 
-  const handleSignOut = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out of Saldo?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign Out",
-        style: "destructive",
-        onPress: async () => {
-          setLoggingOut(true);
-          try {
-            await signOut();
-            useUserStore.getState().resetUserStore();
-            router.replace("/(auth)/SignIn");
-          } catch (err: unknown) {
-            setLoggingOut(false);
-            Alert.alert("Sign Out Error", getErrorMessage(err));
-          }
-        },
-      },
-    ]);
+  const { confirm, alert } = usePrompt();
+
+  const handleSignOut = async () => {
+    const confirmed = await confirm({
+      title: "Sign Out",
+      message: "Are you sure you want to sign out of Saldo?",
+      variant: "danger",
+      confirmText: "Sign Out",
+      cancelText: "Cancel",
+    });
+
+    if (!confirmed) return;
+
+    setLoggingOut(true);
+    try {
+      await signOut();
+      useUserStore.getState().resetUserStore();
+      router.replace("/(auth)/SignIn");
+    } catch (err: unknown) {
+      setLoggingOut(false);
+      await alert({
+        title: "Sign Out Error",
+        message: getErrorMessage(err),
+        variant: "warning",
+      });
+    }
   };
 
   return (

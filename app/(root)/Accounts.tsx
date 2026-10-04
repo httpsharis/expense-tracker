@@ -1,398 +1,242 @@
-import { useUser } from "@clerk/expo";
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
     ActivityIndicator,
     FlatList,
-    Modal,
     Pressable,
     Text,
-    TextInput,
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { useSupabase } from "../../src/shared/hooks/useSupabase";
-import { useUserStore } from "../../store/userStore";
-
-export type AccountType = "cash" | "bank" | "wallet" | "savings";
-export type AccountType =
-  | "cash"
-  | "bank"
-  | "credit_card"
-  | "wallet"
-  | "savings";
-
-interface AccountItem {
-  id: string;
-  name: string;
-  type: AccountType;
-  currency: string;
-  is_default: boolean;
-}
-
-const ACCOUNT_TYPE_ICONS: Record<AccountType, keyof typeof Ionicons.glyphMap> =
-  {
-    cash: "cash-outline",
-    bank: "business-outline",
-    credit_card: "card-outline",
-    wallet: "wallet-outline",
-    savings: "server-outline",
-  };
+import { AccountType, AccountWithBalance } from "@services/accounts";
+import {
+    AccountCard,
+    AccountFilterChips,
+    AccountFormModal,
+    AccountTotalBanner,
+} from "@features/accounts";
+import {
+    useAccountsWithBalancesQuery,
+    useCreateAccountMutation,
+    useDeleteAccountMutation,
+    useSetDefaultAccountMutation,
+    useUpdateAccountMutation,
+} from "@store/hooks";
+import { usePrompt } from "@store/promptStore";
+import { useUserStore } from "@store/userStore";
 
 export default function AccountsScreen() {
   const router = useRouter();
-  const { user } = useUser();
-  const authSupabase = useSupabase();
-  const queryClient = useQueryClient();
   const storeCurrency = useUserStore((state) => state.currency);
+  const { confirm, alert } = usePrompt();
 
+  const [activeFilter, setActiveFilter] = useState<string>("all");
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<AccountItem | null>(
-    null,
-  );
-  const [accountName, setAccountName] = useState("");
-  const [accountType, setAccountType] = useState<AccountType>("bank");
-  const [formError, setFormError] = useState("");
+  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
+  const [selectedAccount, setSelectedAccount] =
+    useState<AccountWithBalance | null>(null);
 
-  // 1. Fetch Accounts
-  const { data: accounts = [], isLoading } = useQuery({
-    queryKey: ["accounts", user?.id],
-    enabled: Boolean(user?.id),
-    queryFn: async () => {
-      const { data, error } = await authSupabase
-        .from("accounts")
-        .select("id, name, type, currency, is_default")
-        .eq("user_id", user!.id)
-        .order("is_default", { ascending: false })
-        .order("created_at", { ascending: true });
+  // Queries & Mutations
+  const { data: accounts = [], isLoading } = useAccountsWithBalancesQuery();
+  const createMutation = useCreateAccountMutation();
+  const updateMutation = useUpdateAccountMutation();
+  const deleteMutation = useDeleteAccountMutation();
+  const setDefaultMutation = useSetDefaultAccountMutation();
 
-      if (error) throw error;
-      return (data || []) as AccountItem[];
-    },
-  });
+  const totalBalance = useMemo(() => {
+    return accounts.reduce((acc, a) => acc + Number(a.balance), 0);
+  }, [accounts]);
 
-  // 2. Set Default Mutation
-  const setDefaultMutation = useMutation({
-    mutationFn: async (targetId: string) => {
-      if (!user?.id) throw new Error("User not authenticated");
+  const filteredAccounts = useMemo(() => {
+    if (activeFilter === "all") return accounts;
+    return accounts.filter((a) => a.type === activeFilter);
+  }, [accounts, activeFilter]);
 
-      // Step A: Reset current default account to false first to respect the partial unique index
-      const { error: resetError } = await authSupabase
-        .from("accounts")
-        .update({ is_default: false })
-        .eq("user_id", user.id)
-        .eq("is_default", true);
-
-      if (resetError) throw resetError;
-
-      // Step B: Set chosen account as default
-      const { error: setError } = await authSupabase
-        .from("accounts")
-        .update({ is_default: true })
-        .eq("id", targetId)
-        .eq("user_id", user.id);
-
-      if (setError) throw setError;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts", user?.id] });
-    },
-  });
-
-  // 3. Save Account Mutation (Create / Edit)
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!user?.id) throw new Error("User not authenticated");
-      if (!accountName.trim()) {
-        throw new Error("Account name cannot be empty");
-      }
-
-      if (editingAccount) {
-        // Edit existing
-        const { error } = await authSupabase
-          .from("accounts")
-          .update({
-            name: accountName.trim(),
-            type: accountType,
-          })
-          .eq("id", editingAccount.id);
-
-        if (error) throw error;
-      } else {
-        // Create new
-        const { error } = await authSupabase.from("accounts").insert({
-          user_id: user.id,
-          name: accountName.trim(),
-          type: accountType,
-          currency: storeCurrency || "USD",
-          is_default: accounts.length === 0,
-        });
-
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts", user?.id] });
-      closeModal();
-    },
-    onError: (err: any) => {
-      setFormError(err.message || "Failed to save account");
-    },
-  });
-
-  const openCreateModal = () => {
-    setEditingAccount(null);
-    setAccountName("");
-    setAccountType("bank");
-    setFormError("");
+  const handleOpenAddModal = () => {
+    setModalMode("create");
+    setSelectedAccount(null);
     setModalOpen(true);
   };
 
-  const openEditModal = (account: AccountItem) => {
-    setEditingAccount(account);
-    setAccountName(account.name);
-    setAccountType(account.type);
-    setFormError("");
+  const handleOpenEditModal = (acc: AccountWithBalance) => {
+    setModalMode("edit");
+    setSelectedAccount(acc);
     setModalOpen(true);
   };
 
-  const closeModal = () => {
+  const handleSaveAccount = async (payload: {
+    name: string;
+    type: AccountType;
+    isDefault: boolean;
+    initialBalance?: number;
+    balanceAdjustmentDelta?: number;
+  }) => {
+    if (modalMode === "create") {
+      await createMutation.mutateAsync({
+        name: payload.name,
+        type: payload.type,
+        currency: storeCurrency || "PKR",
+        is_default: payload.isDefault,
+        initialBalance: payload.initialBalance,
+      });
+    } else if (modalMode === "edit" && selectedAccount) {
+      await updateMutation.mutateAsync({
+        id: selectedAccount.id,
+        name: payload.name,
+        type: payload.type,
+        is_default: payload.isDefault,
+        balanceAdjustmentDelta: payload.balanceAdjustmentDelta,
+      });
+    }
     setModalOpen(false);
-    setEditingAccount(null);
-    setAccountName("");
-    setFormError("");
+  };
+
+  const handleDeleteAccount = async (acc: AccountWithBalance) => {
+    if (modalOpen) setModalOpen(false);
+
+    if (accounts.length <= 1) {
+      await alert({
+        title: "Cannot Delete Account",
+        message:
+          "You must keep at least one active account to track your finances.",
+        variant: "warning",
+        confirmText: "Understood",
+      });
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: `Delete "${acc.name}"?`,
+      message:
+        "Are you sure you want to delete this account? All associated transaction entries and ledger history for this account will be permanently removed.",
+      variant: "danger",
+      confirmText: "Delete account",
+      cancelText: "Cancel",
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await deleteMutation.mutateAsync(acc.id);
+    } catch (err: any) {
+      await alert({
+        title: "Delete Failed",
+        message: err.message || "Failed to delete account. Please try again.",
+        variant: "danger",
+      });
+    }
+  };
+
+  const handleSetDefault = async (acc: AccountWithBalance) => {
+    if (acc.is_default) return;
+    try {
+      await setDefaultMutation.mutateAsync(acc.id);
+    } catch (err: any) {
+      await alert({
+        title: "Action Failed",
+        message: err.message || "Unable to set primary account.",
+        variant: "warning",
+      });
+    }
   };
 
   return (
-    <SafeAreaView
-      className="flex-1 bg-[#F7F7F5] dark:bg-[#0A0A0B]"
-      edges={["top"]}
-    >
-      {/* Header */}
-      <View className="flex-row items-center justify-between px-6 py-4 border-b border-zinc-200/60 dark:border-zinc-800">
+    <SafeAreaView className="flex-1 bg-[#F8F9FB]" edges={["top"]}>
+      {/* 1. Header Navigation */}
+      <View className="flex-row items-center justify-between px-6 pt-3 pb-3">
         <Pressable
           onPress={() => router.back()}
-          hitSlop={12}
-          className="w-10 h-10 rounded-full bg-zinc-200/60 dark:bg-zinc-800/80 items-center justify-center active:opacity-75"
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          className="w-10 h-10 rounded-full bg-white border border-[#E4E7EC] items-center justify-center active:bg-[#F4F5F7] shadow-xs"
         >
-          <Feather name="arrow-left" size={18} color="#71717A" />
+          <Feather name="arrow-left" size={18} color="#090D16" />
         </Pressable>
 
-        <Text className="text-lg font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-          Payment Accounts
+        <Text className="text-base font-bold text-[#090D16] tracking-tight">
+          Accounts
         </Text>
 
         <Pressable
-          onPress={openCreateModal}
-          hitSlop={12}
-          className="w-10 h-10 rounded-full bg-zinc-900 dark:bg-zinc-100 items-center justify-center active:opacity-80"
+          onPress={handleOpenAddModal}
+          accessibilityRole="button"
+          accessibilityLabel="Add new account"
+          className="h-10 px-3.5 rounded-full bg-[#090D16] flex-row items-center gap-1.5 shadow-xs active:opacity-85"
         >
-          <Feather name="plus" size={18} color="#FFFFFF" />
+          <Feather name="plus" size={16} color="#D4F938" />
+          <Text className="text-xs font-bold text-white">Add</Text>
         </Pressable>
       </View>
 
-      {/* Account List */}
+      {/* 2. Total Balance Banner */}
+      <AccountTotalBanner
+        totalBalance={totalBalance}
+        accountsCount={accounts.length}
+        currency={storeCurrency}
+      />
+
+      {/* 3. Filter Chips */}
+      <AccountFilterChips
+        activeFilter={activeFilter}
+        onSelectFilter={setActiveFilter}
+      />
+
+      {/* 4. Accounts Cards List */}
       {isLoading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#71717A" />
+        <View className="flex-1 items-center justify-center py-20">
+          <ActivityIndicator size="large" color="#090D16" />
         </View>
       ) : (
         <FlatList
-          data={accounts}
+          data={filteredAccounts}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ padding: 24 }}
+          contentContainerStyle={{
+            paddingHorizontal: 24,
+            paddingTop: 14,
+            paddingBottom: 110,
+            gap: 16,
+          }}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View className="py-20 items-center">
-              <Ionicons name="wallet-outline" size={32} color="#A1A1AA" />
-              <Text className="text-sm text-zinc-400 dark:text-zinc-500 mt-2">
-                No accounts created yet.
+              <View className="w-16 h-16 rounded-3xl bg-white items-center justify-center border border-[#E4E7EC] mb-3 shadow-xs">
+                <Ionicons name="wallet-outline" size={28} color="#94A3B8" />
+              </View>
+              <Text className="text-base font-bold text-[#090D16]">
+                No accounts found
+              </Text>
+              <Text className="text-xs text-[#64748B] text-center mt-1 max-w-[220px]">
+                Tap 'Add' in the top corner to set up an account.
               </Text>
             </View>
           }
-          renderItem={({ item }) => {
-            const iconName = ACCOUNT_TYPE_ICONS[item.type] || "card-outline";
-            return (
-              <View className="flex-row items-center justify-between p-4 mb-3 rounded-2xl bg-white dark:bg-[#141416] border border-zinc-200/70 dark:border-zinc-800 shadow-sm">
-                <Pressable
-                  onPress={() => openEditModal(item)}
-                  className="flex-row items-center gap-3.5 flex-1 mr-3"
-                >
-                  <View className="w-11 h-11 rounded-xl bg-zinc-100 dark:bg-zinc-800 items-center justify-center">
-                    <Ionicons name={iconName} size={20} color="#71717A" />
-                  </View>
-                  <View className="flex-1 min-w-0">
-                    <View className="flex-row items-center gap-2">
-                      <Text
-                        numberOfLines={1}
-                        className="text-base font-semibold text-zinc-900 dark:text-zinc-100"
-                      >
-                        {item.name}
-                      </Text>
-                      {item.is_default && (
-                        <View className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800">
-                          <Text className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300 uppercase">
-                            Default
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text className="text-xs text-zinc-400 dark:text-zinc-500 uppercase mt-0.5">
-                      {item.type} • {item.currency}
-                    </Text>
-                  </View>
-                </Pressable>
-
-                {/* Set Default Radio / Trigger */}
-                <Pressable
-                  onPress={() => setDefaultMutation.mutate(item.id)}
-                  hitSlop={8}
-                  className="p-2"
-                >
-                  <Ionicons
-                    name={
-                      item.is_default ? "radio-button-on" : "radio-button-off"
-                    }
-                    size={20}
-                    color={item.is_default ? "#10B981" : "#A1A1AA"}
-                  />
-                </Pressable>
-              </View>
-            );
-          }}
+          renderItem={({ item }) => (
+            <AccountCard
+              account={item}
+              storeCurrency={storeCurrency}
+              onEdit={handleOpenEditModal}
+              onDelete={handleDeleteAccount}
+              onSetDefault={handleSetDefault}
+            />
+          )}
         />
       )}
 
-      {/* Create / Edit Account Modal */}
-      <Modal
+      {/* 5. Unified Create & Edit Account Modal */}
+      <AccountFormModal
         visible={modalOpen}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={closeModal}
-      >
-        <SafeAreaView className="flex-1 bg-[#F7F7F5] dark:bg-[#0A0A0B]">
-          <View className="flex-row items-center justify-between px-6 pt-4 pb-3 border-b border-zinc-200 dark:border-zinc-800">
-            <Text className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
-              {editingAccount ? "Edit Account" : "Add Account"}
-            </Text>
-            <Pressable
-              onPress={closeModal}
-              hitSlop={12}
-              className="p-1.5 rounded-full bg-zinc-200/80 dark:bg-zinc-800"
-            >
-              <Feather name="x" size={18} color="#71717A" />
-            </Pressable>
-          </View>
-
-          <View className="p-6 gap-6">
-            {/* Account Name */}
-            <View>
-              <Text className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
-                Account Name
-              </Text>
-              <TextInput
-                value={accountName}
-                onChangeText={(val) => {
-                  setFormError("");
-                  setAccountName(val);
-                }}
-                placeholder="e.g. Chase Checking, Cash Wallet"
-                placeholderTextColor="#A1A1AA"
-                className="h-12 px-4 rounded-xl bg-white dark:bg-[#141416] border border-zinc-200 dark:border-zinc-800 text-sm font-medium text-zinc-900 dark:text-zinc-100"
-              />
-            </View>
-
-            {/* Account Type Chips */}
-            <View>
-              <Text className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
-                Account Type
-              </Text>
-              <View className="flex-row flex-wrap gap-2">
-                {(["bank", "cash", "wallet", "savings"] as AccountType[]).map(
-                  (type) => {
-                    const isSelected = accountType === type;
-                    return (
-                      <Pressable
-                        key={type}
-                        onPress={() => setAccountType(type)}
-                        className={`px-4 py-2.5 rounded-xl border ${
-                {(
-                  [
-                    "bank",
-                    "cash",
-                    "credit_card",
-                    "wallet",
-                    "savings",
-                  ] as AccountType[]
-                ).map((type) => {
-                  const isSelected = accountType === type;
-                  return (
-                    <Pressable
-                      key={type}
-                      onPress={() => setAccountType(type)}
-                      className={`px-4 py-2.5 rounded-xl border ${
-                        isSelected
-                          ? "bg-zinc-900 dark:bg-zinc-100 border-transparent"
-                          : "bg-white dark:bg-[#141416] border-zinc-200 dark:border-zinc-800"
-                      }`}
-                    >
-                      <Text
-                        className={`text-xs font-semibold capitalize ${
-                          isSelected
-                            ? "bg-zinc-900 dark:bg-zinc-100 border-transparent"
-                            : "bg-white dark:bg-[#141416] border-zinc-200 dark:border-zinc-800"
-                            ? "text-white dark:text-zinc-950"
-                            : "text-zinc-800 dark:text-zinc-200"
-                        }`}
-                      >
-                        <Text
-                          className={`text-xs font-semibold capitalize ${
-                            isSelected
-                              ? "text-white dark:text-zinc-950"
-                              : "text-zinc-800 dark:text-zinc-200"
-                          }`}
-                        >
-                          {type}
-                        </Text>
-                      </Pressable>
-                    );
-                  },
-                )}
-                        {type.replace("_", " ")}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            {formError ? (
-              <Text className="text-xs font-medium text-red-500">
-                {formError}
-              </Text>
-            ) : null}
-
-            {/* Save CTA */}
-            <Pressable
-              onPress={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending}
-              className="w-full h-14 bg-zinc-900 dark:bg-zinc-100 rounded-2xl items-center justify-center active:opacity-80 mt-4"
-            >
-              {saveMutation.isPending ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text className="text-base font-semibold text-white dark:text-zinc-950">
-                  {editingAccount ? "Update Account" : "Create Account"}
-                </Text>
-              )}
-            </Pressable>
-          </View>
-        </SafeAreaView>
-      </Modal>
+        mode={modalMode}
+        account={selectedAccount}
+        accountsCount={accounts.length}
+        storeCurrency={storeCurrency}
+        onClose={() => setModalOpen(false)}
+        onSave={handleSaveAccount}
+        onDelete={handleDeleteAccount}
+        isSaving={createMutation.isPending || updateMutation.isPending}
+      />
     </SafeAreaView>
   );
 }
