@@ -1,3 +1,4 @@
+import { useColorScheme } from "nativewind";
 import React from "react";
 import {
     ActivityIndicator,
@@ -26,6 +27,8 @@ export function Button({
   textClassName = "",
   ...pressableProps
 }: ButtonProps) {
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === "dark";
   const isDisabled = disabled || loading;
 
   return (
@@ -37,28 +40,28 @@ export function Button({
       {...pressableProps}
     >
       {variant === "primary" ? (
-        <View className="h-[52px] w-full rounded-xl flex-row items-center justify-center bg-[#4E4E52] dark:bg-[#F2F2F7]">
+        <View className="h-14 w-full rounded-2xl flex-row items-center justify-center bg-primary shadow-sm active:scale-98">
           {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={isDark ? "#0A0A0B" : "#FFFFFF"} />
           ) : (
             <Text
-              className={`font-body-medium text-[16px] font-semibold text-white dark:text-neutral-900 ${textClassName}`}
+              className={`text-[15px] font-bold text-btn-text ${textClassName}`}
             >
               {label}
             </Text>
           )}
         </View>
       ) : (
-        <View className="h-[52px] w-full rounded-xl flex-row items-center justify-center bg-white dark:bg-[#18181B] border border-[#D1D1D6] dark:border-[#2C2C2E] px-4 gap-3">
+        <View className="h-14 w-full rounded-2xl flex-row items-center justify-center bg-surface border border-surface-border px-4 gap-3 shadow-2xs active:scale-98">
           {loading ? (
-            <ActivityIndicator color="#8E8E93" />
+            <ActivityIndicator color="#71717A" />
           ) : (
             <>
               {icon && (
                 <View className="items-center justify-center">{icon}</View>
               )}
               <Text
-                className={`font-body-medium text-[16px] font-semibold text-[#1C1C1E] dark:text-[#F2F2F7] ${textClassName}`}
+                className={`text-[15px] font-semibold text-ink ${textClassName}`}
               >
                 {label}
               </Text>
