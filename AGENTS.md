@@ -14,6 +14,7 @@ The following active skills are installed locally inside the `.agent/skills/` di
 - **creative-3d-motion-designer**: Drives Awwwards-tier 3D, WebGL, and kinetic motion experiences (Three.js, R3F, GSAP ScrollTrigger) while strictly prohibiting generic "AI slop" layouts.
 - **api-testing-observability-api-mock**: Handles reliable mock generation, endpoint testing isolation, and service diagnostics.
 - **architect-review**: Executes high-level structural integrity audits, directory mapping reviews, and compliance checks.
+- **ui-ux-pro-max**: UI/UX design intelligence for mobile & web enforcing accessibility (WCAG 4.5:1), touch targets (44x44px), interaction polish, and stealth luxury aesthetics.
 
 ## Active Rules & Workspace Guidance
 
@@ -24,10 +25,18 @@ The following active skills are installed locally inside the `.agent/skills/` di
 - Restrict feature folders to house localized visual components and custom hooks only.
 - Utilize official Expo file-based routing frameworks (`src/app`) for handling application layouts, layout wrappers, navigation stacks, and route paths.
 
-### 2. UI & Styling Implementation
+### 2. UI & Styling Implementation (Universal Global CSS Tokens — Never Hardcode)
 
-- Leverage utility-first design principles matching standard design tokens.
-- Apply a uniform look and feel across all tracking screens, transaction logs, and dashboard metrics.
+- **Single Source of Truth (`app/global.css` + `tailwind.config.js`)**: All colors are defined as CSS variables in `app/global.css` (`:root` and `.dark`) and mapped in `tailwind.config.js`.
+- **Never Hardcode Colors**: Strictly forbid hardcoded hex classes (`bg-[#...]`, `text-[#...]`, `border-[#...]`) or raw palette utilities (`zinc-*`, `slate-*`, `gray-*`) for backgrounds, cards, borders, or typography in screen and feature components.
+- **Always Use Universal Semantic Tokens**:
+  - Screen backgrounds: `bg-canvas` (`--color-canvas`: `#F7F7F5` light / `#0A0A0B` dark)
+  - Card & modal surfaces: `bg-surface` (`--color-surface-flat`: `#FFFFFF` light / `#141416` dark)
+  - Recessed pills, inputs & chips: `bg-surface-muted` (`--color-surface-tint`: `#F4F4F5` light / `#1F1F23` dark)
+  - Borders & dividers: `border-surface-border` and `border-surface-divider` (`#E4E4E7` / `#F4F4F5` light, `#27272A` dark)
+  - Typography: `text-ink`, `text-ink-muted`, `text-ink-whisper`
+  - Primary Buttons & Positive Accents Only: `bg-primary` / `text-primary` (`#22C55E`). Never tint screen backgrounds, cards, or modals green.
+- Apply a uniform look and feel across all tracking screens, transaction logs, profile settings, and dashboard metrics.
 - Prioritize clean integration methods when embedding asset types like SVG logo graphics into layout frameworks.
 
 ### 3. API & Data Flow
