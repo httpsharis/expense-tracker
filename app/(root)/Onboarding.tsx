@@ -2,8 +2,9 @@ import { useUser } from "@clerk/expo";
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
     ActivityIndicator,
@@ -20,11 +21,14 @@ import {
     CurrencyEntry,
     CurrencyPicker,
 } from "@shared/components/CurrencyPicker";
+import { fromMinorUnits, toMinorUnits } from "@shared/lib/money";
 import {
     OnboardingFormValues,
     onboardingSchema,
 } from "@shared/lib/schemas/onboarding";
+import { ensureDefaultAccounts } from "@services/accounts";
 import { useSupabase } from "@shared/hooks/useSupabase";
+import { invalidateLedgerQueries } from "@store/keys";
 import { useUserStore } from "@store/userStore";
 
 interface SetupErrorState {
@@ -36,14 +40,16 @@ export default function Onboarding() {
   const router = useRouter();
   const { user } = useUser();
   const authSupabase = useSupabase();
+  const queryClient = useQueryClient();
   const setStoreCurrency = useUserStore((state) => state.setCurrency);
   const setNeedsOnboarding = useUserStore((state) => state.setNeedsOnboarding);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [setupError, setSetupError] = useState<SetupErrorState | null>(null);
   const [selectedCurrency, setSelectedCurrency] = useState<CurrencyEntry>(
-    () => ALL_CURRENCIES.find((c) => c.code === "USD") ?? ALL_CURRENCIES[0],
+    () => ALL_CURRENCIES.find((c) => c.code === "PKR") ?? ALL_CURRENCIES[0],
   );
 
   const {
@@ -58,9 +64,11 @@ export default function Onboarding() {
 
   const parseDatabaseError = (err: unknown): SetupErrorState => {
     if (typeof err === "object" && err !== null) {
-      const errorObj = err as Record<string, any>;
-      const code = errorObj.code;
-      const message = errorObj.message?.toLowerCase() || "";
+      const errorObj = err as Record<string, unknown>;
+      const code = typeof errorObj.code === "string" ? errorObj.code : "";
+      const rawMessage =
+        typeof errorObj.message === "string" ? errorObj.message : "";
+      const message = rawMessage.toLowerCase();
 
       // PostgREST / Supabase permission failure
       if (code === "42501" || message.includes("row-level security")) {
@@ -92,10 +100,10 @@ export default function Onboarding() {
         };
       }
 
-      if (errorObj.message) {
+      if (rawMessage) {
         return {
           title: "Setup Failed",
-          message: errorObj.message,
+          message: rawMessage,
         };
       }
     }
@@ -111,6 +119,7 @@ export default function Onboarding() {
   };
 
   const handleSave = async (data: OnboardingFormValues) => {
+    if (submittingRef.current) return;
     if (!user) {
       setSetupError({
         title: "Session Missing",
@@ -120,11 +129,15 @@ export default function Onboarding() {
       return;
     }
 
+    submittingRef.current = true;
     try {
       setIsSubmitting(true);
       setSetupError(null);
 
-      const initialAmount = parseFloat(data.startingBalance || "0");
+      const initialAmountMinor = toMinorUnits(
+        parseFloat(data.startingBalance || "0") || 0,
+      );
+      const initialAmount = fromMinorUnits(initialAmountMinor);
       const email = user.emailAddresses[0]?.emailAddress ?? "";
       const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim();
 
@@ -145,71 +158,36 @@ export default function Onboarding() {
 
       if (profileError) throw profileError;
 
-      // 2. Fetch or create the primary Cash account
-      let accountId: string;
-      const { data: existingAccount, error: fetchAccountError } =
-        await authSupabase
-          .from("accounts")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("is_default", true)
-          .maybeSingle();
+      // 2. Provision core default accounts (Cash, Bank, Savings)
+      const accounts = await ensureDefaultAccounts(
+        authSupabase,
+        user.id,
+        selectedCurrency.code,
+      );
+      const defaultCashAccount =
+        accounts.find((a) => a.is_default) ??
+        accounts.find((a) => a.type === "cash") ??
+        accounts[0];
 
-      if (fetchAccountError) throw fetchAccountError;
-
-      if (existingAccount) {
-        accountId = existingAccount.id;
-      } else {
-        const { data: newAccount, error: accountError } = await authSupabase
-          .from("accounts")
-          .insert({
-            user_id: user.id,
-            name: "Cash",
-            type: "cash",
-            currency: selectedCurrency.code,
-            is_default: true,
-          })
-          .select("id")
-          .single();
-
-        if (accountError) throw accountError;
-        accountId = newAccount.id;
-      }
-
-      // 3. Record initial starting balance
-      if (initialAmount > 0) {
-        const { data: newTx, error: transactionError } = await authSupabase
+      // 3. Record initial starting balance via transactions (trigger posts balance_entries automatically)
+      if (initialAmountMinor > 0 && defaultCashAccount) {
+        const { error: transactionError } = await authSupabase
           .from("transactions")
           .insert({
             user_id: user.id,
-            account_id: accountId,
+            account_id: defaultCashAccount.id,
             type: "income",
             amount: initialAmount,
             description: "Starting Balance",
             input_method: "manual",
             status: "completed",
-          })
-          .select("id")
-          .single();
+          });
 
         if (transactionError) throw transactionError;
-
-        if (newTx) {
-          const { error: balanceError } = await authSupabase
-            .from("balance_entries")
-            .insert({
-              user_id: user.id,
-              account_id: accountId,
-              delta: initialAmount,
-              reason: "top_up",
-              transaction_id: newTx.id,
-            });
-
-          if (balanceError) throw balanceError;
-        }
       }
 
-      // 4. Synchronize local store and route to dashboard
+      // 4. Invalidate React Query caches, synchronize local store, and route to dashboard
+      await invalidateLedgerQueries(queryClient, user.id);
       setStoreCurrency(selectedCurrency.code);
       setNeedsOnboarding(false);
       router.replace("/(root)/(tabs)");
@@ -217,6 +195,56 @@ export default function Onboarding() {
       const parsed = parseDatabaseError(err);
       setSetupError(parsed);
     } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSkip = async () => {
+    if (submittingRef.current) return;
+    if (!user) {
+      setSetupError({
+        title: "Session Missing",
+        message:
+          "Your authenticated session has expired. Please sign in again.",
+      });
+      return;
+    }
+
+    submittingRef.current = true;
+    try {
+      setIsSubmitting(true);
+      setSetupError(null);
+
+      const email = user.emailAddresses[0]?.emailAddress ?? "";
+      const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim();
+
+      const { error: profileError } = await authSupabase
+        .from("profiles")
+        .upsert(
+          {
+            id: user.id,
+            email,
+            name: fullName || null,
+            image_url: user.imageUrl || null,
+            currency: selectedCurrency.code,
+            month_start_day: 1,
+          },
+          { onConflict: "id" },
+        );
+
+      if (profileError) throw profileError;
+
+      await ensureDefaultAccounts(authSupabase, user.id, selectedCurrency.code);
+      await invalidateLedgerQueries(queryClient, user.id);
+      setStoreCurrency(selectedCurrency.code);
+      setNeedsOnboarding(false);
+      router.replace("/(root)/(tabs)");
+    } catch (err: unknown) {
+      const parsed = parseDatabaseError(err);
+      setSetupError(parsed);
+    } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -313,8 +341,8 @@ export default function Onboarding() {
           )}
         </View>
 
-        {/* Action Button */}
-        <View className="w-full pt-4">
+        {/* Action Button & Skip Option */}
+        <View className="w-full pt-4 gap-3">
           <Pressable
             onPress={handleSubmit(handleSave)}
             disabled={isSubmitting}
@@ -327,6 +355,16 @@ export default function Onboarding() {
                 {setupError ? "Try Again" : "Continue"}
               </Text>
             )}
+          </Pressable>
+
+          <Pressable
+            onPress={handleSkip}
+            disabled={isSubmitting}
+            className="w-full py-2.5 items-center justify-center active:opacity-60"
+          >
+            <Text className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              Skip for now (Start with 0)
+            </Text>
           </Pressable>
         </View>
       </KeyboardAwareScrollView>

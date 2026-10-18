@@ -1,6 +1,6 @@
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -13,7 +13,10 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useColorScheme } from "nativewind";
 
+import { getErrorMessage } from "@shared/lib/errors";
+import { fromMinorUnits, subtractMoney, toMinorUnits } from "@shared/lib/money";
 import { ACCOUNT_CONFIGS, AccountFormModalProps, AccountType } from "../types";
 
 export function AccountFormModal({
@@ -27,11 +30,14 @@ export function AccountFormModal({
   onDelete,
   isSaving,
 }: AccountFormModalProps) {
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === "dark";
   const [accountName, setAccountName] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("bank");
   const [isDefault, setIsDefault] = useState(false);
   const [balanceInput, setBalanceInput] = useState("");
   const [formError, setFormError] = useState("");
+  const submittingRef = useRef(false);
 
   // Sync state whenever modal opens or active account changes
   useEffect(() => {
@@ -63,12 +69,14 @@ export function AccountFormModal({
   };
 
   const handleSave = async () => {
+    if (submittingRef.current || isSaving) return;
     const trimmed = accountName.trim();
     if (!trimmed) {
       setFormError("Enter an account name.");
       return;
     }
 
+    submittingRef.current = true;
     try {
       if (mode === "create") {
         const parsedInitial = balanceInput.trim()
@@ -76,7 +84,7 @@ export function AccountFormModal({
           : 0;
         const initialBalance = isNaN(parsedInitial)
           ? 0
-          : Math.round(parsedInitial * 100) / 100;
+          : fromMinorUnits(toMinorUnits(parsedInitial));
 
         await onSave({
           name: trimmed,
@@ -89,11 +97,9 @@ export function AccountFormModal({
           ? parseFloat(balanceInput)
           : account.balance;
         const currentBalance = account.balance || 0;
-        const rawDelta = isNaN(parsedNewBalance)
+        const delta = isNaN(parsedNewBalance)
           ? 0
-          : parsedNewBalance - currentBalance;
-        const roundedDelta = Math.round(rawDelta * 100) / 100;
-        const delta = Math.abs(roundedDelta) < 0.01 ? 0 : roundedDelta;
+          : subtractMoney(parsedNewBalance, currentBalance);
 
         await onSave({
           name: trimmed,
@@ -102,17 +108,18 @@ export function AccountFormModal({
           balanceAdjustmentDelta: delta,
         });
       }
-    } catch (err: any) {
-      setFormError(err.message || "Failed to save account.");
+    } catch (err: unknown) {
+      setFormError(getErrorMessage(err, "Failed to save account."));
+    } finally {
+      submittingRef.current = false;
     }
   };
 
-  // Compute live delta for edit mode with floating point rounding
-  const rawDelta =
+  // Compute live delta for edit mode in integer minor units
+  const balanceDelta =
     mode === "edit" && account && balanceInput.trim() !== ""
-      ? (parseFloat(balanceInput) || 0) - (account.balance || 0)
+      ? subtractMoney(parseFloat(balanceInput) || 0, account.balance || 0)
       : 0;
-  const balanceDelta = Math.round(rawDelta * 100) / 100;
 
   const displayCurrency = account?.currency || storeCurrency || "PKR";
 
@@ -123,14 +130,14 @@ export function AccountFormModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView className="flex-1 bg-[#F8F9FB]">
+      <SafeAreaView className="flex-1 bg-[#F8F9FB] dark:bg-[#090D16]">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           className="flex-1"
         >
           {/* Modal Navigation Header */}
-          <View className="flex-row items-center justify-between px-6 pt-4 pb-3 border-b border-[#E4E7EC] bg-white">
-            <Text className="text-base font-bold text-[#090D16]">
+          <View className="flex-row items-center justify-between px-6 pt-4 pb-3 border-b border-[#E4E7EC] dark:border-zinc-800 bg-white dark:bg-[#161B26]">
+            <Text className="text-base font-bold text-[#090D16] dark:text-white">
               {mode === "create"
                 ? "Add new account"
                 : `Edit "${account?.name}"`}
@@ -140,9 +147,9 @@ export function AccountFormModal({
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel="Close form"
-              className="w-8 h-8 rounded-full bg-[#F4F5F7] items-center justify-center active:bg-gray-200"
+              className="w-8 h-8 rounded-full bg-[#F4F5F7] dark:bg-zinc-800 items-center justify-center active:bg-gray-200 dark:active:bg-zinc-700"
             >
-              <Feather name="x" size={16} color="#090D16" />
+              <Feather name="x" size={16} color={isDark ? "#FFFFFF" : "#090D16"} />
             </Pressable>
           </View>
 
@@ -156,7 +163,7 @@ export function AccountFormModal({
             <View className="gap-5">
               {/* 1. Account Name Input */}
               <View>
-                <Text className="text-xs font-semibold text-[#525866] mb-2">
+                <Text className="text-xs font-semibold text-[#525866] dark:text-zinc-400 mb-2">
                   Account name
                 </Text>
                 <TextInput
@@ -167,7 +174,7 @@ export function AccountFormModal({
                   }}
                   placeholder="e.g. Salary Bank, Cash in Hand, Easypaisa"
                   placeholderTextColor="#94A3B8"
-                  className="h-12 px-4 rounded-2xl bg-white border border-[#E4E7EC] text-sm font-semibold text-[#090D16]"
+                  className="h-12 px-4 rounded-2xl bg-white dark:bg-[#161B26] border border-[#E4E7EC] dark:border-zinc-800 text-sm font-semibold text-[#090D16] dark:text-white"
                   autoFocus={mode === "create"}
                 />
               </View>
@@ -175,7 +182,7 @@ export function AccountFormModal({
               {/* 2. Balance Input (Initial Balance or Balance Adjustment) */}
               <View>
                 <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-xs font-semibold text-[#525866]">
+                  <Text className="text-xs font-semibold text-[#525866] dark:text-zinc-400">
                     {mode === "create"
                       ? "Starting balance (optional)"
                       : "Adjust balance"}
@@ -183,7 +190,7 @@ export function AccountFormModal({
                   {mode === "edit" && Math.abs(balanceDelta) >= 0.01 && (
                     <Text
                       className={`text-[11px] font-semibold tabular-nums ${
-                        balanceDelta > 0 ? "text-emerald-600" : "text-rose-600"
+                        balanceDelta > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                       }`}
                     >
                       {balanceDelta > 0
@@ -193,8 +200,8 @@ export function AccountFormModal({
                     </Text>
                   )}
                 </View>
-                <View className="flex-row items-center h-12 px-4 rounded-2xl bg-white border border-[#E4E7EC]">
-                  <Text className="text-xs font-bold text-[#64748B] mr-2">
+                <View className="flex-row items-center h-12 px-4 rounded-2xl bg-white dark:bg-[#161B26] border border-[#E4E7EC] dark:border-zinc-800">
+                  <Text className="text-xs font-bold text-[#64748B] dark:text-zinc-400 mr-2">
                     {displayCurrency}
                   </Text>
                   <TextInput
@@ -203,10 +210,10 @@ export function AccountFormModal({
                     keyboardType="decimal-pad"
                     placeholder="0.00"
                     placeholderTextColor="#94A3B8"
-                    className="flex-1 text-sm font-semibold text-[#090D16]"
+                    className="flex-1 text-sm font-semibold text-[#090D16] dark:text-white"
                   />
                 </View>
-                <Text className="text-[11px] text-[#94A3B8] mt-1.5">
+                <Text className="text-[11px] text-[#94A3B8] dark:text-zinc-500 mt-1.5">
                   {mode === "create"
                     ? "Enter the starting money in this account. Defaults to 0."
                     : "Changing this records an adjustment entry in your ledger."}
@@ -215,7 +222,7 @@ export function AccountFormModal({
 
               {/* 3. Account Type Selector */}
               <View>
-                <Text className="text-xs font-semibold text-[#525866] mb-2">
+                <Text className="text-xs font-semibold text-[#525866] dark:text-zinc-400 mb-2">
                   Account type
                 </Text>
                 <View className="gap-2">
@@ -232,25 +239,25 @@ export function AccountFormModal({
                           accessibilityLabel={`Select ${cfg.label}`}
                           className={`flex-row items-center justify-between p-3.5 rounded-2xl border active:scale-[0.99] ${
                             isSelected
-                              ? "bg-[#090D16] border-[#090D16]"
-                              : "bg-white border-[#E4E7EC]"
+                              ? "bg-[#090D16] dark:bg-zinc-100 border-[#090D16] dark:border-zinc-100"
+                              : "bg-white dark:bg-[#161B26] border-[#E4E7EC] dark:border-zinc-800"
                           }`}
                         >
                           <View className="flex-row items-center gap-3">
                             <View
                               className={`w-9 h-9 rounded-xl items-center justify-center ${
-                                isSelected ? "bg-white/10" : "bg-[#F4F5F7]"
+                                isSelected ? "bg-white/10 dark:bg-black/10" : "bg-[#F4F5F7] dark:bg-zinc-800"
                               }`}
                             >
                               <Ionicons
                                 name={cfg.icon}
                                 size={18}
-                                color={isSelected ? cfg.accentColor : "#090D16"}
+                                color={isSelected ? (isDark ? "#090D16" : cfg.accentColor) : (isDark ? "#E2E8F0" : "#090D16")}
                               />
                             </View>
                             <Text
                               className={`text-sm font-bold ${
-                                isSelected ? "text-white" : "text-[#090D16]"
+                                isSelected ? "text-white dark:text-zinc-950" : "text-[#090D16] dark:text-white"
                               }`}
                             >
                               {cfg.label}
@@ -261,7 +268,7 @@ export function AccountFormModal({
                             <Ionicons
                               name="checkmark-circle"
                               size={20}
-                              color="#D4F938"
+                              color={isDark ? "#16A34A" : "#D4F938"}
                             />
                           )}
                         </Pressable>
@@ -274,20 +281,20 @@ export function AccountFormModal({
               {/* 4. Primary Account Toggle */}
               <Pressable
                 onPress={() => setIsDefault(!isDefault)}
-                className="flex-row items-center justify-between p-4 rounded-2xl bg-white border border-[#E4E7EC] active:bg-[#F9FAFC]"
+                className="flex-row items-center justify-between p-4 rounded-2xl bg-white dark:bg-[#161B26] border border-[#E4E7EC] dark:border-zinc-800 active:bg-[#F9FAFC] dark:active:bg-zinc-800/60"
               >
                 <View className="flex-1 mr-3">
-                  <Text className="text-sm font-bold text-[#090D16]">
+                  <Text className="text-sm font-bold text-[#090D16] dark:text-white">
                     Set as primary account
                   </Text>
-                  <Text className="text-xs text-[#64748B] mt-0.5">
+                  <Text className="text-xs text-[#64748B] dark:text-zinc-400 mt-0.5">
                     New transactions will automatically log to this account.
                   </Text>
                 </View>
                 <Ionicons
                   name={isDefault ? "checkbox" : "square-outline"}
                   size={22}
-                  color={isDefault ? "#090D16" : "#94A3B8"}
+                  color={isDefault ? (isDark ? "#D4F938" : "#090D16") : "#94A3B8"}
                 />
               </Pressable>
 
@@ -303,12 +310,12 @@ export function AccountFormModal({
                 disabled={isSaving}
                 accessibilityRole="button"
                 accessibilityLabel="Confirm save account"
-                className="w-full h-14 bg-[#090D16] rounded-2xl items-center justify-center active:opacity-85 mt-1 shadow-sm"
+                className="w-full h-14 bg-[#090D16] dark:bg-zinc-100 rounded-2xl items-center justify-center active:opacity-85 mt-1 shadow-sm"
               >
                 {isSaving ? (
-                  <ActivityIndicator color="#FFFFFF" />
+                  <ActivityIndicator color={isDark ? "#090D16" : "#FFFFFF"} />
                 ) : (
-                  <Text className="text-sm font-bold text-white">
+                  <Text className="text-sm font-bold text-white dark:text-zinc-950">
                     {mode === "create" ? "Create account" : "Save changes"}
                   </Text>
                 )}
@@ -320,10 +327,10 @@ export function AccountFormModal({
                   onPress={() => onDelete(account)}
                   accessibilityRole="button"
                   accessibilityLabel="Delete this account"
-                  className="w-full h-12 rounded-2xl border border-rose-200 bg-rose-50 flex-row items-center justify-center gap-2 active:bg-rose-100 mt-2 mb-6"
+                  className="w-full h-12 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 flex-row items-center justify-center gap-2 active:bg-rose-100 dark:active:bg-rose-900/40 mt-2 mb-6"
                 >
                   <Feather name="trash-2" size={15} color="#E11D48" />
-                  <Text className="text-xs font-bold text-rose-700">
+                  <Text className="text-xs font-bold text-rose-700 dark:text-rose-400">
                     Delete account
                   </Text>
                 </Pressable>

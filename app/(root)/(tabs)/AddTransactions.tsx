@@ -1,29 +1,33 @@
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState } from "react";
 import {
-  Modal,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   Text,
   TextInput,
   View,
 } from "react-native";
+import Animated, {
+  FadeInDown,
+  LinearTransition,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { formatCurrency, getCurrencySymbol } from "@shared/lib/currency";
 import {
-  useAccountsWithBalancesQuery,
-  useCategoriesQuery,
-  useCreateTransactionMutation,
-  useTransactionsQuery,
-  useUpdateTransactionMutation,
-} from "@store/hooks";
-import { usePrompt } from "@store/promptStore";
-import { useUserStore } from "@store/userStore";
-
-const PRESET_AMOUNTS = [100, 500, 1000, 5000];
+  AccountSheetModal,
+  CategorySheetModal,
+  DateSheetModal,
+  ReceiptScannerModal,
+  TagsSheetModal,
+  TransactionSplitSheet,
+  useTransactionForm,
+} from "@features/transactions";
+import { CategoryIcon } from "@shared/components/CategoryIcon";
+import { formatCurrency } from "@shared/lib/currency";
 
 const AVAILABLE_TAGS = [
   "Personal",
@@ -36,950 +40,628 @@ const AVAILABLE_TAGS = [
   "Tax",
 ];
 
-/**
- * Clean, safe math evaluator for inline calculations.
- * Respects standard operator precedence (* and / before + and -).
- */
-function evaluateExpression(expression: string): number {
-  const sanitized = expression.replace(/×/g, "*").replace(/÷/g, "/").trim();
-  const clean = sanitized.replace(/[+\-*/]+$/, "").trim();
-  if (!clean) return 0;
-
-  const tokens = clean.match(/(\d+(\.\d+)?|[+\-*/])/g);
-  if (!tokens || tokens.length === 0) return 0;
-
-  // Pass 1: Multiplication and Division
-  const intermediate: (number | string)[] = [];
-  let i = 0;
-  while (i < tokens.length) {
-    const token = tokens[i];
-    if (token === "*" || token === "/") {
-      const prev = intermediate.pop();
-      const next = parseFloat(tokens[i + 1]);
-      if (typeof prev === "number" && !isNaN(next)) {
-        const val = token === "*" ? prev * next : next !== 0 ? prev / next : 0;
-        intermediate.push(val);
-        i += 2;
-        continue;
-      }
-    }
-    const num = parseFloat(token);
-    intermediate.push(isNaN(num) ? token : num);
-    i++;
-  }
-
-  // Pass 2: Addition and Subtraction
-  let total = typeof intermediate[0] === "number" ? (intermediate[0] as number) : 0;
-  let j = 1;
-  while (j < intermediate.length) {
-    const op = intermediate[j];
-    const nextVal = intermediate[j + 1];
-    if (typeof nextVal === "number") {
-      if (op === "+") total += nextVal;
-      else if (op === "-") total -= nextVal;
-    }
-    j += 2;
-  }
-
-  return Math.max(0, Math.round(total * 100) / 100);
-}
-
 export default function AddTransactionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     editId?: string;
+    type?: "expense" | "income" | "transfer";
     initialType?: "expense" | "income" | "transfer";
+    initialAmount?: string;
+    initialDescription?: string;
+    initialCategory?: string;
   }>();
 
-  const storeCurrency = useUserStore((state) => state.currency);
-  const { alert } = usePrompt();
+  const {
+    isEditing,
+    editEligibility,
+    isPending,
+    txType,
+    setTxType,
+    amountInput,
+    hasMathOperator,
+    computedAmount,
+    accounts,
+    categories,
+    sourceAccount,
+    targetAccount,
+    activeCategory,
+    activeCurrency,
+    currencySymbol,
+    selectedAccountId,
+    setSelectedAccountId,
+    selectedTransferAccountId,
+    setSelectedTransferAccountId,
+    selectedCategoryId,
+    setSelectedCategoryId,
+    description,
+    setDescription,
+    selectedTags,
+    toggleTag,
+    dateSelection,
+    setDateSelection,
+    customDate,
+    setCustomDate,
+    groups,
+    peopleSummaries,
+    selectedSplitGroup,
+    setSelectedSplitGroup,
+    selectedSplitPerson,
+    setSelectedSplitPerson,
+    splitPaidBy,
+    setSplitPaidBy,
+    splitPreviewText,
+    swapTransferAccounts,
+    customTags,
+    addCustomTag,
+    handleKey,
+    applyScannedReceipt,
+    handleSubmit,
+  } = useTransactionForm({
+    editId: params.editId,
+    initialType: params.initialType || params.type,
+    initialAmount: params.initialAmount,
+    initialDescription: params.initialDescription,
+    initialCategory: params.initialCategory,
+  });
 
-  // Queries & Mutations
-  const { data: accounts = [] } = useAccountsWithBalancesQuery();
-  const { data: categories = [] } = useCategoriesQuery();
-  const { data: liveTransactions = [] } = useTransactionsQuery();
-  const createTxMutation = useCreateTransactionMutation();
-  const updateTxMutation = useUpdateTransactionMutation();
-
-  const isEditing = Boolean(params.editId);
-  const editingTx = useMemo(
-    () => (params.editId ? liveTransactions.find((t) => t.id === params.editId) : null),
-    [params.editId, liveTransactions]
-  );
-
-  // Form State
-  const [txType, setTxType] = useState<"expense" | "income" | "transfer">(
-    params.initialType || "expense"
-  );
-  const [amountInput, setAmountInput] = useState("0");
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [selectedTransferAccountId, setSelectedTransferAccountId] = useState<string | null>(null);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [description, setDescription] = useState("");
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [dateSelection, setDateSelection] = useState<"today" | "yesterday" | "custom">("today");
-  const [customDate, setCustomDate] = useState<string>(new Date().toISOString());
-
-  // Bottom Sheets
+  const [scannerModalOpen, setScannerModalOpen] = useState(false);
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   const [accountSheetOpen, setAccountSheetOpen] = useState(false);
+  const [accountPickerTarget, setAccountPickerTarget] = useState<"source" | "target">("source");
   const [dateSheetOpen, setDateSheetOpen] = useState(false);
   const [tagsSheetOpen, setTagsSheetOpen] = useState(false);
+  const [splitSheetOpen, setSplitSheetOpen] = useState(false);
 
-  // Populate data when editing
-  useEffect(() => {
-    if (editingTx) {
-      setTxType((editingTx.type as "expense" | "income" | "transfer") || "expense");
-      setAmountInput(String(Math.abs(Number(editingTx.amount))));
-      setSelectedAccountId(editingTx.account_id);
-      setSelectedTransferAccountId(editingTx.transfer_account_id || null);
-      setSelectedCategoryId(editingTx.category_id || null);
-
-      const desc = editingTx.description || "";
-      const tagMatch = desc.match(/\[(.*?)\]$/);
-      if (tagMatch && tagMatch[1]) {
-        const parsedTags = tagMatch[1].split(",").map((t) => t.trim());
-        setSelectedTags(parsedTags);
-        setDescription(desc.replace(/\[(.*?)\]$/, "").trim());
-      } else {
-        setDescription(desc);
-      }
-
-      const txDate = new Date(editingTx.date);
-      const todayStr = new Date().toDateString();
-      const yesterdayStr = new Date(Date.now() - 86400000).toDateString();
-      if (txDate.toDateString() === todayStr) {
-        setDateSelection("today");
-      } else if (txDate.toDateString() === yesterdayStr) {
-        setDateSelection("yesterday");
-      } else {
-        setDateSelection("custom");
-        setCustomDate(editingTx.date);
-      }
-    }
-  }, [editingTx]);
-
-  // Derived Account & Category
-  const sourceAccount =
-    accounts.find((a) => a.id === selectedAccountId) ??
-    accounts.find((a) => a.is_default) ??
-    accounts[0];
-
-  const targetAccount = accounts.find((a) => a.id === selectedTransferAccountId);
-
-  const activeCategory =
-    categories.find((c) => c.id === selectedCategoryId) ??
-    (txType === "expense" ? categories[0] : null);
-
-  const activeCurrency = sourceAccount?.currency || storeCurrency || "PKR";
-  const currencySymbol = getCurrencySymbol(activeCurrency);
-
-  // Math Evaluation
-  const hasMathOperator = /[+\-×÷]/.test(amountInput);
-  const computedAmount = useMemo(() => evaluateExpression(amountInput), [amountInput]);
-
-  // Numpad & Calculator input handlers
-  const handleKey = (key: string) => {
-    // 1. Math operators
-    if (["+", "-", "×", "÷"].includes(key)) {
-      if (amountInput === "0") return;
-      if (/[+\-×÷]\s*$/.test(amountInput)) {
-        setAmountInput((prev) => prev.replace(/[+\-×÷]\s*$/, `${key} `));
-      } else {
-        setAmountInput((prev) => `${prev} ${key} `);
-      }
-      return;
-    }
-
-    // 2. Clear
-    if (key === "CLEAR") {
-      setAmountInput("0");
-      return;
-    }
-
-    // 3. Equals
-    if (key === "=") {
-      if (hasMathOperator) {
-        setAmountInput(computedAmount.toString());
-      }
-      return;
-    }
-
-    // 4. Decimal
-    if (key === ".") {
-      const segments = amountInput.split(/\s+[+\-×÷]\s+/);
-      const currentSegment = segments[segments.length - 1] || "";
-      if (!currentSegment.includes(".")) {
-        setAmountInput((prev) => (currentSegment === "" ? prev + "0." : prev + "."));
-      }
-      return;
-    }
-
-    // 5. Backspace
-    if (key === "BACK") {
-      if (amountInput.length <= 1) {
-        setAmountInput("0");
-        return;
-      }
-      if (/\s+[+\-×÷]\s+$/.test(amountInput)) {
-        setAmountInput((prev) => prev.replace(/\s+[+\-×÷]\s+$/, ""));
-      } else {
-        setAmountInput((prev) => prev.slice(0, -1));
-      }
-      return;
-    }
-
-    // 6. Digits
-    if (amountInput === "0") {
-      setAmountInput(key);
-    } else {
-      const segments = amountInput.split(/\s+[+\-×÷]\s+/);
-      const currentSegment = segments[segments.length - 1] || "";
-      if (currentSegment.includes(".")) {
-        const decimals = currentSegment.split(".")[1];
-        if (decimals && decimals.length >= 2) return;
-      }
-      if (currentSegment.replace(".", "").length >= 9) return;
-      setAmountInput((prev) => prev + key);
-    }
-  };
-
-  const handlePresetAdd = (amount: number) => {
-    if (amountInput === "0") {
-      setAmountInput(amount.toString());
-    } else {
-      const current = evaluateExpression(amountInput);
-      setAmountInput((current + amount).toString());
-    }
-  };
-
-  const toggleTag = (tag: string) => {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
-  };
-
-  // Submit Handler
-  const handleSubmit = async () => {
-    const finalVal = hasMathOperator ? computedAmount : evaluateExpression(amountInput);
-
-    if (isNaN(finalVal) || finalVal <= 0) {
-      await alert({
-        title: "Amount Required",
-        message: "Please enter a valid amount greater than 0.",
-        variant: "warning",
-      });
-      return;
-    }
-
-    if (!sourceAccount?.id) {
-      await alert({
-        title: "Account Required",
-        message: "Please choose a funding account.",
-        variant: "warning",
-      });
-      return;
-    }
-
-    if (txType === "transfer") {
-      if (!selectedTransferAccountId) {
-        await alert({
-          title: "Destination Account Required",
-          message: "Please choose where to send funds.",
-          variant: "warning",
-        });
-        return;
-      }
-      if (selectedTransferAccountId === sourceAccount.id) {
-        await alert({
-          title: "Invalid Transfer",
-          message: "Source and destination accounts must be different.",
-          variant: "warning",
-        });
-        return;
-      }
-    }
-
-    let finalDateIso = new Date().toISOString();
-    if (dateSelection === "yesterday") {
-      finalDateIso = new Date(Date.now() - 86400000).toISOString();
-    } else if (dateSelection === "custom") {
-      finalDateIso = customDate;
-    }
-
-    const cleanDesc = description.trim();
-    const tagSuffix = selectedTags.length > 0 ? ` [${selectedTags.join(", ")}]` : "";
-    const defaultLabel =
-      txType === "income"
-        ? "Deposit"
-        : txType === "transfer"
-          ? "Account Transfer"
-          : activeCategory?.name || "General Expense";
-
-    const fullDescription = `${cleanDesc || defaultLabel}${tagSuffix}`;
-
-    try {
-      if (isEditing && editingTx) {
-        await updateTxMutation.mutateAsync({
-          id: editingTx.id,
-          data: {
-            account_id: sourceAccount.id,
-            transfer_account_id: txType === "transfer" ? selectedTransferAccountId : null,
-            amount: finalVal,
-            type: txType,
-            category_id: txType === "transfer" ? null : activeCategory?.id || null,
-            description: fullDescription,
-            date: finalDateIso,
-          },
-        });
-      } else {
-        await createTxMutation.mutateAsync({
-          account_id: sourceAccount.id,
-          transfer_account_id: txType === "transfer" ? selectedTransferAccountId : null,
-          amount: finalVal,
-          type: txType,
-          category_id: txType === "transfer" ? null : activeCategory?.id || null,
-          description: fullDescription,
-          status: "completed",
-          input_method: "manual",
-          date: finalDateIso,
-        });
-      }
-
-      setAmountInput("0");
-      setDescription("");
-      setSelectedTags([]);
-      router.replace("/(root)/(tabs)/Transactions" as any);
-    } catch (err: any) {
-      await alert({
-        title: "Transaction Failed",
-        message: err.message || "Failed to record transaction.",
-        variant: "warning",
-      });
-    }
-  };
-
-  const isPending = createTxMutation.isPending || updateTxMutation.isPending;
+  const isAmountLocked = isEditing && !editEligibility.canEditAmountAndAccount;
+  const allAvailableTags = Array.from(new Set([...AVAILABLE_TAGS, ...customTags]));
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FB] justify-between" edges={["top", "bottom"]}>
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* 1. QUIET EDITORIAL NAVIGATION HEADER                          */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      <View className="px-6 pt-2 pb-1">
-        <View className="flex-row items-center justify-between">
-          <Pressable
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            className="w-10 h-10 rounded-full bg-white border border-[#E4E7EC] items-center justify-center active:scale-95 shadow-2xs"
-          >
-            <Feather name="arrow-left" size={18} color="#090D16" />
-          </Pressable>
-
-          {/* Neo-Banking Segmented Control */}
-          <View className="flex-row bg-[#ECEFF3] p-1 rounded-2xl border border-gray-200/50">
-            {(["expense", "income", "transfer"] as const).map((type) => {
-              const isActive = txType === type;
-              return (
-                <Pressable
-                  key={type}
-                  onPress={() => setTxType(type)}
-                  className={`px-3.5 py-1.5 rounded-xl transition-all ${
-                    isActive ? "bg-white shadow-2xs" : ""
-                  }`}
-                >
-                  <Text
-                    className={`text-xs font-bold capitalize ${
-                      isActive
-                        ? type === "income"
-                          ? "text-emerald-700"
-                          : type === "transfer"
-                            ? "text-blue-700"
-                            : "text-[#090D16]"
-                        : "text-[#64748B]"
-                    }`}
-                  >
-                    {type}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Pressable
-            onPress={() => handleKey("CLEAR")}
-            accessibilityRole="button"
-            accessibilityLabel="Clear"
-            className="w-10 h-10 rounded-full bg-white border border-[#E4E7EC] items-center justify-center active:scale-95 shadow-2xs"
-          >
-            <Text className="text-xs font-bold text-[#64748B]">C</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* 2. THE STAGE (Monumental Typography, Note & Context Strip)    */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      <View className="flex-1 justify-center items-center px-6 py-2">
-        {/* Big Tabular Hero Display */}
-        <View className="items-center justify-center">
-          <View className="flex-row items-baseline justify-center">
-            <Text className="text-3xl font-extrabold text-[#64748B] mr-2">
-              {currencySymbol}
-            </Text>
-            <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              className="text-6xl font-black text-[#090D16] tracking-tighter tabular-nums"
-            >
-              {amountInput}
-            </Text>
-          </View>
-
-          {/* Equation Result Badge if Calculating */}
-          {hasMathOperator ? (
-            <View className="flex-row items-center gap-1.5 mt-2 px-3.5 py-1 rounded-full bg-[#D4F938] border border-[#D4F938] shadow-2xs">
-              <Feather name="corner-down-right" size={12} color="#090D16" />
-              <Text className="text-xs font-black text-[#090D16] tabular-nums">
-                = {formatCurrency(computedAmount, activeCurrency)}
-              </Text>
-            </View>
-          ) : (
-            <Text className="text-xs font-semibold text-[#64748B] mt-1">
-              {txType === "income"
-                ? "Incoming cashflow"
-                : txType === "transfer"
-                  ? "Account rebalance"
-                  : "Daily spending"}
-            </Text>
-          )}
-        </View>
-
-        {/* Minimal Editorial Merchant / Purpose Note */}
-        <View className="w-full max-w-[300px] mt-4">
-          <TextInput
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Add note or merchant..."
-            placeholderTextColor="#94A3B8"
-            className="text-center text-sm font-semibold text-[#090D16] py-1 px-3 border-b border-[#E4E7EC]"
-          />
-        </View>
-
-        {/* Quick Amount Add Pills */}
-        <View className="flex-row items-center gap-1.5 mt-3">
-          {PRESET_AMOUNTS.map((val) => (
+    <SafeAreaView
+      className="flex-1 bg-canvas dark:bg-forest-deep"
+      edges={["top", "bottom"]}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        className="flex-1 justify-between"
+      >
+        {/* ── 1. CLEAN TOP NAVIGATION & TYPE SELECTOR ── */}
+        <Animated.View
+          entering={FadeInDown.duration(240)}
+          className="px-5 pt-1 pb-1"
+        >
+          <View className="flex-row items-center justify-between">
             <Pressable
-              key={val}
-              onPress={() => handlePresetAdd(val)}
-              className="px-3 py-1 rounded-full bg-white border border-[#E4E7EC] active:scale-95 shadow-2xs"
+              onPress={() =>
+                router.canGoBack() ? router.back() : router.replace("/(root)/(tabs)")
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              className="w-10 h-10 rounded-full bg-botanical-pearl dark:bg-forest-surface border border-botanical-border dark:border-forest-border items-center justify-center active:scale-95 shadow-2xs"
             >
-              <Text className="text-[11px] font-bold text-[#64748B]">
-                +{val >= 1000 ? `${val / 1000}k` : val}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {/* Context Strip: Category • Account • Date • Tags */}
-        <View className="w-full mt-4">
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{
-              gap: 8,
-              justifyContent: "center",
-              flexGrow: 1,
-            }}
-          >
-            {/* Category */}
-            {txType !== "transfer" && (
-              <Pressable
-                onPress={() => setCategorySheetOpen(true)}
-                className="flex-row items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-white border border-[#E4E7EC] shadow-2xs active:bg-gray-50"
-              >
-                <Text className="text-sm">{activeCategory?.icon || "🏷️"}</Text>
-                <Text className="text-xs font-bold text-[#090D16]">
-                  {activeCategory?.name || "Category"}
-                </Text>
-                <Feather name="chevron-down" size={12} color="#64748B" />
-              </Pressable>
-            )}
-
-            {/* Account */}
-            <Pressable
-              onPress={() => setAccountSheetOpen(true)}
-              className="flex-row items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-white border border-[#E4E7EC] shadow-2xs active:bg-gray-50"
-            >
-              <Ionicons
-                name={txType === "transfer" ? "swap-horizontal" : "card-outline"}
-                size={14}
-                color={txType === "transfer" ? "#2563EB" : "#090D16"}
-              />
-              <Text className="text-xs font-bold text-[#090D16]">
-                {txType === "transfer"
-                  ? `${sourceAccount?.name || "From"} ➔ ${targetAccount?.name || "To"}`
-                  : sourceAccount?.name || "Account"}
-              </Text>
-              <Feather name="chevron-down" size={12} color="#64748B" />
+              <Feather name="arrow-left" size={18} color="#64748B" />
             </Pressable>
 
-            {/* Date */}
-            <Pressable
-              onPress={() => setDateSheetOpen(true)}
-              className="flex-row items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-white border border-[#E4E7EC] shadow-2xs active:bg-gray-50"
-            >
-              <Feather name="calendar" size={12} color="#64748B" />
-              <Text className="text-xs font-bold text-[#090D16] capitalize">
-                {dateSelection}
-              </Text>
-              <Feather name="chevron-down" size={12} color="#64748B" />
-            </Pressable>
-
-            {/* Tags */}
-            <Pressable
-              onPress={() => setTagsSheetOpen(true)}
-              className={`flex-row items-center gap-1.5 px-3.5 py-2 rounded-2xl border active:bg-gray-50 ${
-                selectedTags.length > 0
-                  ? "bg-[#D4F938]/30 border-[#D4F938]"
-                  : "bg-white border-[#E4E7EC] shadow-2xs"
+            {/* Direct Segmented Control */}
+            <View
+              className={`flex-row bg-botanical-pearl dark:bg-forest-surface p-1 rounded-2xl border border-botanical-border dark:border-forest-border ${
+                isAmountLocked ? "opacity-50" : ""
               }`}
             >
-              <Feather name="hash" size={12} color="#090D16" />
-              <Text className="text-xs font-bold text-[#090D16]">
-                {selectedTags.length > 0
-                  ? `${selectedTags.length} ${selectedTags.length === 1 ? "tag" : "tags"}`
-                  : "Tags"}
-              </Text>
-              <Feather name="chevron-down" size={12} color="#64748B" />
-            </Pressable>
-          </ScrollView>
-        </View>
-      </View>
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* 3. CALCULATOR OPERATOR BAR & PROPORTIONAL NUMPAD              */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      <View className="w-full px-5 pb-3">
-        {/* Sleek Arithmetic Operator Strip */}
-        <View className="flex-row gap-2 mb-2">
-          {["+", "-", "×", "÷", "="].map((op) => (
-            <Pressable
-              key={op}
-              onPress={() => handleKey(op)}
-              className="flex-1 h-10 rounded-xl bg-white border border-[#E4E7EC] items-center justify-center shadow-2xs active:bg-gray-100 active:scale-95"
-            >
-              <Text className="text-base font-extrabold text-[#090D16]">{op}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {/* Natural 3x4 Numpad */}
-        <View className="gap-2">
-          {/* Row 1 */}
-          <View className="flex-row gap-2">
-            {["1", "2", "3"].map((num) => (
-              <Pressable
-                key={num}
-                onPress={() => handleKey(num)}
-                className="flex-1 h-14 rounded-2xl bg-white border border-[#E4E7EC] items-center justify-center shadow-2xs active:bg-gray-100 active:scale-95"
-              >
-                <Text className="text-2xl font-bold text-[#090D16]">{num}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          {/* Row 2 */}
-          <View className="flex-row gap-2">
-            {["4", "5", "6"].map((num) => (
-              <Pressable
-                key={num}
-                onPress={() => handleKey(num)}
-                className="flex-1 h-14 rounded-2xl bg-white border border-[#E4E7EC] items-center justify-center shadow-2xs active:bg-gray-100 active:scale-95"
-              >
-                <Text className="text-2xl font-bold text-[#090D16]">{num}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          {/* Row 3 */}
-          <View className="flex-row gap-2">
-            {["7", "8", "9"].map((num) => (
-              <Pressable
-                key={num}
-                onPress={() => handleKey(num)}
-                className="flex-1 h-14 rounded-2xl bg-white border border-[#E4E7EC] items-center justify-center shadow-2xs active:bg-gray-100 active:scale-95"
-              >
-                <Text className="text-2xl font-bold text-[#090D16]">{num}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          {/* Row 4 */}
-          <View className="flex-row gap-2">
-            <Pressable
-              onPress={() => handleKey(".")}
-              className="flex-1 h-14 rounded-2xl bg-white border border-[#E4E7EC] items-center justify-center shadow-2xs active:bg-gray-100 active:scale-95"
-            >
-              <Text className="text-2xl font-bold text-[#090D16]">.</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => handleKey("0")}
-              className="flex-1 h-14 rounded-2xl bg-white border border-[#E4E7EC] items-center justify-center shadow-2xs active:bg-gray-100 active:scale-95"
-            >
-              <Text className="text-2xl font-bold text-[#090D16]">0</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => handleKey("BACK")}
-              className="flex-1 h-14 rounded-2xl bg-white border border-[#E4E7EC] items-center justify-center shadow-2xs active:bg-gray-100 active:scale-95"
-            >
-              <Ionicons name="backspace-outline" size={22} color="#090D16" />
-            </Pressable>
-          </View>
-        </View>
-
-        {/* ───────────────────────────────────────────────────────────── */}
-        {/* 4. DOCKED STUDIO VAULT PRIMARY ACTION CTA                     */}
-        {/* ───────────────────────────────────────────────────────────── */}
-        <View className="mt-3">
-          <Pressable
-            onPress={hasMathOperator ? () => handleKey("=") : handleSubmit}
-            disabled={isPending}
-            className="w-full h-14 bg-[#090D16] rounded-2xl flex-row items-center justify-center gap-2 active:scale-98 shadow-sm border border-[#232838] disabled:opacity-50"
-          >
-            <Feather
-              name={hasMathOperator ? "check" : isEditing ? "save" : "plus"}
-              size={18}
-              color="#D4F938"
-            />
-            <Text className="text-sm font-black text-white tracking-wide">
-              {isPending
-                ? "Saving..."
-                : hasMathOperator
-                  ? `Calculate (${formatCurrency(computedAmount, activeCurrency)})`
-                  : isEditing
-                    ? "Update transaction"
-                    : txType === "income"
-                      ? `Record income • ${formatCurrency(computedAmount, activeCurrency)}`
-                      : txType === "transfer"
-                        ? `Transfer funds • ${formatCurrency(computedAmount, activeCurrency)}`
-                        : `Add expense • ${formatCurrency(computedAmount, activeCurrency)}`}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* 5. SLICK BOTTOM SHEETS (Category • Account • Date • Tags)      */}
-      {/* ───────────────────────────────────────────────────────────── */}
-
-      {/* Category Sheet */}
-      <Modal
-        visible={categorySheetOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCategorySheetOpen(false)}
-      >
-        <Pressable
-          onPress={() => setCategorySheetOpen(false)}
-          className="flex-1 bg-black/40 justify-end"
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            className="bg-white rounded-t-3xl p-6 pb-10 max-h-[75%]"
-          >
-            <View className="flex-row items-center justify-between pb-4 border-b border-gray-100">
-              <Text className="text-base font-extrabold text-[#090D16]">
-                Select category
-              </Text>
-              <Pressable onPress={() => setCategorySheetOpen(false)} hitSlop={8}>
-                <Feather name="x" size={20} color="#64748B" />
-              </Pressable>
-            </View>
-
-            <ScrollView className="mt-4">
-              <View className="flex-row flex-wrap gap-2.5">
-                {categories.map((cat) => {
-                  const isSelected = (activeCategory?.id ?? categories[0]?.id) === cat.id;
-                  return (
-                    <Pressable
-                      key={cat.id}
-                      onPress={() => {
-                        setSelectedCategoryId(cat.id);
-                        setCategorySheetOpen(false);
-                      }}
-                      className={`flex-row items-center gap-2 px-4 py-2.5 rounded-2xl border active:scale-95 ${
-                        isSelected
-                          ? "border-[#D4F938] bg-[#D4F938]/20"
-                          : "border-[#E4E7EC] bg-[#F8F9FB]"
-                      }`}
-                    >
-                      <Text className="text-base">{cat.icon || "🏷️"}</Text>
-                      <Text
-                        className={`text-xs font-bold ${
-                          isSelected ? "text-[#090D16]" : "text-[#64748B]"
-                        }`}
-                      >
-                        {cat.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* Account Sheet */}
-      <Modal
-        visible={accountSheetOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAccountSheetOpen(false)}
-      >
-        <Pressable
-          onPress={() => setAccountSheetOpen(false)}
-          className="flex-1 bg-black/40 justify-end"
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            className="bg-white rounded-t-3xl p-6 pb-10 max-h-[75%]"
-          >
-            <View className="flex-row items-center justify-between pb-4 border-b border-gray-100">
-              <Text className="text-base font-extrabold text-[#090D16]">
-                {txType === "transfer" ? "Select accounts" : "Payment account"}
-              </Text>
-              <Pressable onPress={() => setAccountSheetOpen(false)} hitSlop={8}>
-                <Feather name="x" size={20} color="#64748B" />
-              </Pressable>
-            </View>
-
-            <ScrollView className="mt-4">
-              {txType === "transfer" ? (
-                <View className="gap-4">
-                  {/* From Account */}
-                  <View>
-                    <Text className="text-xs font-bold text-[#64748B] mb-2 uppercase tracking-wider">
-                      From account
-                    </Text>
-                    <View className="gap-2">
-                      {accounts.map((acc) => (
-                        <Pressable
-                          key={`from-${acc.id}`}
-                          onPress={() => setSelectedAccountId(acc.id)}
-                          className={`flex-row items-center justify-between p-3.5 rounded-2xl border ${
-                            (selectedAccountId ?? sourceAccount?.id) === acc.id
-                              ? "border-[#090D16] bg-[#090D16]/5"
-                              : "border-[#E4E7EC] bg-[#F8F9FB]"
-                          }`}
-                        >
-                          <Text className="text-xs font-extrabold text-[#090D16]">
-                            {acc.name}
-                          </Text>
-                          <Text className="text-xs font-bold text-[#64748B] tabular-nums">
-                            {formatCurrency(acc.balance, acc.currency)}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-
-                  {/* To Account */}
-                  <View>
-                    <Text className="text-xs font-bold text-[#64748B] mb-2 uppercase tracking-wider">
-                      To account
-                    </Text>
-                    <View className="gap-2">
-                      {accounts
-                        .filter((a) => a.id !== (selectedAccountId ?? sourceAccount?.id))
-                        .map((acc) => (
-                          <Pressable
-                            key={`to-${acc.id}`}
-                            onPress={() => setSelectedTransferAccountId(acc.id)}
-                            className={`flex-row items-center justify-between p-3.5 rounded-2xl border ${
-                              selectedTransferAccountId === acc.id
-                                ? "border-blue-500 bg-blue-50"
-                                : "border-[#E4E7EC] bg-[#F8F9FB]"
-                            }`}
-                          >
-                            <Text className="text-xs font-extrabold text-[#090D16]">
-                              {acc.name}
-                            </Text>
-                            <Text className="text-xs font-bold text-[#64748B] tabular-nums">
-                              {formatCurrency(acc.balance, acc.currency)}
-                            </Text>
-                          </Pressable>
-                        ))}
-                    </View>
-                  </View>
-
-                  <Pressable
-                    onPress={() => setAccountSheetOpen(false)}
-                    className="w-full h-12 rounded-2xl bg-[#090D16] items-center justify-center mt-2"
-                  >
-                    <Text className="text-xs font-black text-white">Done</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <View className="gap-2">
-                  {accounts.map((acc) => (
-                    <Pressable
-                      key={acc.id}
-                      onPress={() => {
-                        setSelectedAccountId(acc.id);
-                        setAccountSheetOpen(false);
-                      }}
-                      className={`flex-row items-center justify-between p-4 rounded-2xl border ${
-                        (selectedAccountId ?? sourceAccount?.id) === acc.id
-                          ? "border-[#D4F938] bg-[#D4F938]/15"
-                          : "border-[#E4E7EC] bg-[#F8F9FB]"
-                      }`}
-                    >
-                      <View className="flex-row items-center gap-3">
-                        <View className="w-10 h-10 rounded-xl bg-white items-center justify-center border border-gray-200">
-                          <Ionicons name="card-outline" size={20} color="#090D16" />
-                        </View>
-                        <View>
-                          <Text className="text-sm font-extrabold text-[#090D16]">
-                            {acc.name}
-                          </Text>
-                          <Text className="text-xs text-[#64748B] capitalize">
-                            {acc.type} • {acc.currency}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text className="text-sm font-black text-[#090D16] tabular-nums">
-                        {formatCurrency(acc.balance, acc.currency)}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* Date Sheet */}
-      <Modal
-        visible={dateSheetOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDateSheetOpen(false)}
-      >
-        <Pressable
-          onPress={() => setDateSheetOpen(false)}
-          className="flex-1 bg-black/40 justify-end"
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            className="bg-white rounded-t-3xl p-6 pb-10"
-          >
-            <View className="flex-row items-center justify-between pb-4 border-b border-gray-100">
-              <Text className="text-base font-extrabold text-[#090D16]">
-                Transaction date
-              </Text>
-              <Pressable onPress={() => setDateSheetOpen(false)} hitSlop={8}>
-                <Feather name="x" size={20} color="#64748B" />
-              </Pressable>
-            </View>
-
-            <View className="gap-2.5 mt-4">
-              {[
-                { id: "today", label: "Today", desc: "Current date & time" },
-                { id: "yesterday", label: "Yesterday", desc: "1 day ago" },
-                { id: "custom", label: "Custom date", desc: "Select custom date" },
-              ].map((opt) => (
-                <Pressable
-                  key={opt.id}
-                  onPress={() => {
-                    setDateSelection(opt.id as any);
-                    setDateSheetOpen(false);
-                  }}
-                  className={`flex-row items-center justify-between p-4 rounded-2xl border ${
-                    dateSelection === opt.id
-                      ? "border-[#D4F938] bg-[#D4F938]/15"
-                      : "border-[#E4E7EC] bg-[#F8F9FB]"
-                  }`}
-                >
-                  <View>
-                    <Text className="text-xs font-black text-[#090D16]">
-                      {opt.label}
-                    </Text>
-                    <Text className="text-[11px] text-[#64748B]">{opt.desc}</Text>
-                  </View>
-                  {dateSelection === opt.id && (
-                    <Feather name="check" size={16} color="#090D16" />
-                  )}
-                </Pressable>
-              ))}
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* Tags Sheet */}
-      <Modal
-        visible={tagsSheetOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setTagsSheetOpen(false)}
-      >
-        <Pressable
-          onPress={() => setTagsSheetOpen(false)}
-          className="flex-1 bg-black/40 justify-end"
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            className="bg-white rounded-t-3xl p-6 pb-10"
-          >
-            <View className="flex-row items-center justify-between pb-4 border-b border-gray-100">
-              <Text className="text-base font-extrabold text-[#090D16]">
-                Select tags
-              </Text>
-              <Pressable onPress={() => setTagsSheetOpen(false)} hitSlop={8}>
-                <Feather name="x" size={20} color="#64748B" />
-              </Pressable>
-            </View>
-
-            <View className="flex-row flex-wrap gap-2.5 mt-4">
-              {AVAILABLE_TAGS.map((tag) => {
-                const isSelected = selectedTags.includes(tag);
+              {(["expense", "income", "transfer"] as const).map((type) => {
+                const isActive = txType === type;
                 return (
                   <Pressable
-                    key={tag}
-                    onPress={() => toggleTag(tag)}
-                    className={`px-4 py-2.5 rounded-2xl border active:scale-95 ${
-                      isSelected
-                        ? "bg-[#090D16] border-[#090D16]"
-                        : "bg-[#F8F9FB] border-[#E4E7EC]"
+                    key={type}
+                    disabled={isAmountLocked}
+                    onPress={() => setTxType(type)}
+                    className={`px-4 py-1.5 rounded-xl transition-all active:scale-95 ${
+                      isActive ? "bg-white dark:bg-forest-deep shadow-2xs" : ""
                     }`}
                   >
                     <Text
-                      className={`text-xs font-black ${
-                        isSelected ? "text-[#D4F938]" : "text-[#64748B]"
+                      className={`text-xs font-bold capitalize ${
+                        isActive
+                          ? type === "income"
+                            ? "text-emerald-600 dark:text-lime"
+                            : type === "transfer"
+                            ? "text-blue-600 dark:text-blue-400"
+                            : "text-ink dark:text-ink-light"
+                          : "text-ink-muted dark:text-ink-muted-dark"
                       }`}
                     >
-                      #{tag}
+                      {type}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
 
-            <Pressable
-              onPress={() => setTagsSheetOpen(false)}
-              className="w-full h-12 rounded-2xl bg-[#090D16] items-center justify-center mt-6"
+            {/* Top Action Cluster (Camera Scan + Clear Amount) */}
+            <View className="flex-row items-center gap-1.5">
+              {!isAmountLocked && (
+                <Pressable
+                  onPress={() => setScannerModalOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scan receipt with camera"
+                  className="w-10 h-10 rounded-full bg-botanical-pearl dark:bg-forest-surface border border-botanical-border dark:border-forest-border items-center justify-center active:scale-95 shadow-2xs"
+                >
+                  <Feather name="camera" size={17} color="#22C55E" />
+                </Pressable>
+              )}
+
+              <Pressable
+                disabled={isAmountLocked}
+                onPress={() => handleKey("CLEAR")}
+                accessibilityRole="button"
+                accessibilityLabel="Clear amount"
+                className={`w-10 h-10 rounded-full bg-botanical-pearl dark:bg-forest-surface border border-botanical-border dark:border-forest-border items-center justify-center active:scale-95 shadow-2xs ${
+                  isAmountLocked ? "opacity-40" : ""
+                }`}
+              >
+                <Text className="text-xs font-black text-ink-muted dark:text-ink-muted-dark">
+                  C
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* ── 2. SCROLLABLE UPPER STAGE (HERO AMOUNT + UNIFIED DETAILS) ── */}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-start", paddingBottom: 6 }}
+        >
+          {/* Hero Amount Display */}
+          <Animated.View
+            entering={FadeInDown.duration(300).delay(35)}
+            layout={LinearTransition.springify().damping(20).stiffness(180)}
+            className="items-center justify-center pt-2 pb-2 px-6"
+          >
+            <View className="flex-row items-baseline justify-center">
+              <Text className="text-2xl font-extrabold text-ink-whisper dark:text-ink-whisper-dark mr-2 pb-1">
+                {currencySymbol}
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                className="text-5xl font-black text-ink dark:text-ink-light tracking-tight tabular-nums"
+              >
+                {amountInput}
+              </Text>
+            </View>
+
+            {/* Math Expression Output / Lock reason */}
+            {editEligibility.lockReason ? (
+              <View className="flex-row items-center gap-1.5 mt-1.5 px-3 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20">
+                <Feather name="lock" size={11} color="#D97706" />
+                <Text className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                  {editEligibility.lockReason}
+                </Text>
+              </View>
+            ) : hasMathOperator ? (
+              <View className="flex-row items-center gap-1.5 mt-1.5 px-3 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                <Feather name="corner-down-right" size={12} color="#16A34A" />
+                <Text className="text-xs font-black text-emerald-600 dark:text-lime tabular-nums">
+                  = {formatCurrency(computedAmount, activeCurrency)}
+                </Text>
+              </View>
+            ) : null}
+          </Animated.View>
+
+          {/* ── 3. UNIFIED MINIMALIST TRANSACTION DETAILS CARD ── */}
+          <Animated.View
+            entering={FadeInDown.duration(320).delay(75)}
+            layout={LinearTransition.springify().damping(20).stiffness(180)}
+            className="px-5 mt-1"
+          >
+            <Animated.View
+              layout={LinearTransition.springify().damping(20).stiffness(180)}
+              className="bg-white dark:bg-forest-surface rounded-3xl p-4 border border-botanical-border dark:border-forest-border shadow-2xs"
             >
-              <Text className="text-xs font-black text-white">Done</Text>
+              {/* Row 1: Category & Account Selectors (or Transfer Route) */}
+              {txType === "transfer" ? (
+                /* Transfer Direct Route: From Account ⇄ To Account */
+                <View>
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="text-[10px] font-black uppercase tracking-wider text-ink-whisper dark:text-ink-whisper-dark">
+                      Transfer Route
+                    </Text>
+                    <Pressable
+                      disabled={isAmountLocked}
+                      onPress={swapTransferAccounts}
+                      className="flex-row items-center gap-1 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 active:scale-95"
+                    >
+                      <Ionicons name="swap-horizontal" size={12} color="#2563EB" />
+                      <Text className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                        Swap
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <View className="flex-row items-center gap-2">
+                    {/* From Account Tile */}
+                    <Pressable
+                      disabled={isAmountLocked}
+                      onPress={() => {
+                        setAccountPickerTarget("source");
+                        setAccountSheetOpen(true);
+                      }}
+                      className="flex-1 bg-botanical-pearl dark:bg-forest-deep p-3 rounded-2xl border border-botanical-border dark:border-forest-border active:scale-98"
+                    >
+                      <Text className="text-[9px] font-black uppercase tracking-wider text-ink-whisper dark:text-ink-whisper-dark mb-0.5">
+                        From
+                      </Text>
+                      <Text className="text-xs font-bold text-ink dark:text-ink-light" numberOfLines={1}>
+                        {sourceAccount?.name || "Select"}
+                      </Text>
+                      <Text className="text-[10px] text-ink-muted dark:text-ink-muted-dark mt-0.5 tabular-nums">
+                        {sourceAccount ? formatCurrency(sourceAccount.balance, sourceAccount.currency) : "—"}
+                      </Text>
+                    </Pressable>
+
+                    <Ionicons name="arrow-forward" size={14} color="#64748B" />
+
+                    {/* To Account Tile */}
+                    <Pressable
+                      disabled={isAmountLocked}
+                      onPress={() => {
+                        setAccountPickerTarget("target");
+                        setAccountSheetOpen(true);
+                      }}
+                      className={`flex-1 p-3 rounded-2xl border active:scale-98 ${
+                        !targetAccount || targetAccount.id === sourceAccount?.id
+                          ? "bg-amber-500/5 border-amber-500/30"
+                          : "bg-botanical-pearl dark:bg-forest-deep border-botanical-border dark:border-forest-border"
+                      }`}
+                    >
+                      <Text className="text-[9px] font-black uppercase tracking-wider text-ink-whisper dark:text-ink-whisper-dark mb-0.5">
+                        To
+                      </Text>
+                      <Text className="text-xs font-bold text-ink dark:text-ink-light" numberOfLines={1}>
+                        {targetAccount?.name || "Select"}
+                      </Text>
+                      <Text className="text-[10px] text-ink-muted dark:text-ink-muted-dark mt-0.5 tabular-nums">
+                        {targetAccount ? formatCurrency(targetAccount.balance, targetAccount.currency) : "Select"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                /* Expense / Income: Side-by-Side Category & Account Selectors */
+                <View className="flex-row items-center gap-2">
+                  {/* Category Picker Tile */}
+                  <Pressable
+                    onPress={() => setCategorySheetOpen(true)}
+                    className="flex-1 bg-botanical-pearl dark:bg-forest-deep p-3 rounded-2xl border border-botanical-border dark:border-forest-border flex-row items-center justify-between active:scale-98"
+                  >
+                    <View className="flex-row items-center gap-2 flex-1 mr-1">
+                      <CategoryIcon icon={activeCategory?.icon} size={18} color="#22C55E" />
+                      <View className="flex-1">
+                        <Text className="text-[9px] font-black uppercase tracking-wider text-ink-whisper dark:text-ink-whisper-dark">
+                          Category
+                        </Text>
+                        <Text className="text-xs font-bold text-ink dark:text-ink-light" numberOfLines={1}>
+                          {activeCategory?.name || "Choose"}
+                        </Text>
+                      </View>
+                    </View>
+                    <Feather name="chevron-down" size={13} color="#64748B" />
+                  </Pressable>
+
+                  {/* Account Picker Tile */}
+                  <Pressable
+                    disabled={isAmountLocked}
+                    onPress={() => {
+                      setAccountPickerTarget("source");
+                      setAccountSheetOpen(true);
+                    }}
+                    className={`flex-1 bg-botanical-pearl dark:bg-forest-deep p-3 rounded-2xl border border-botanical-border dark:border-forest-border flex-row items-center justify-between active:scale-98 ${
+                      isAmountLocked ? "opacity-50" : ""
+                    }`}
+                  >
+                    <View className="flex-row items-center gap-2 flex-1 mr-1">
+                      <Ionicons name="card-outline" size={16} color="#64748B" />
+                      <View className="flex-1">
+                        <Text className="text-[9px] font-black uppercase tracking-wider text-ink-whisper dark:text-ink-whisper-dark">
+                          Account
+                        </Text>
+                        <Text className="text-xs font-bold text-ink dark:text-ink-light" numberOfLines={1}>
+                          {sourceAccount?.name || "Account"}
+                        </Text>
+                      </View>
+                    </View>
+                    <Feather name="chevron-down" size={13} color="#64748B" />
+                  </Pressable>
+                </View>
+              )}
+
+              {/* Row 2: Inline Note / Description Input */}
+              <View className="mt-3 pt-3 border-t border-botanical-border dark:border-forest-border flex-row items-center gap-2">
+                <Feather name="edit-2" size={13} color="#94A3B8" />
+                <TextInput
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder={
+                    txType === "income"
+                      ? "Note: e.g. Salary, Client payment, Bonus"
+                      : txType === "transfer"
+                      ? "Note: e.g. Savings deposit, Wallet top-up"
+                      : "Note: e.g. Starbucks, Groceries, Dinner"
+                  }
+                  placeholderTextColor="#94A3B8"
+                  className="flex-1 text-xs font-bold text-ink dark:text-ink-light py-1"
+                />
+                {description.length > 0 && (
+                  <Pressable onPress={() => setDescription("")} hitSlop={6}>
+                    <Feather name="x" size={12} color="#94A3B8" />
+                  </Pressable>
+                )}
+              </View>
+
+              {/* Row 3: Direct Micro-Chips (Date, Split, Tags) */}
+              <View className="mt-3 pt-2.5 border-t border-botanical-border dark:border-forest-border flex-row items-center justify-between flex-wrap gap-1.5">
+                <View className="flex-row items-center gap-1.5 flex-wrap">
+                  {/* Date Chip */}
+                  <Pressable
+                    onPress={() => setDateSheetOpen(true)}
+                    className="flex-row items-center gap-1 px-2.5 py-1 rounded-xl bg-botanical-pearl dark:bg-forest-deep border border-botanical-border dark:border-forest-border active:scale-95"
+                  >
+                    <Feather name="calendar" size={11} color="#64748B" />
+                    <Text className="text-[11px] font-bold text-ink dark:text-ink-light capitalize">
+                      {dateSelection === "custom" ? customDate.slice(0, 10) : dateSelection}
+                    </Text>
+                  </Pressable>
+
+                  {/* Split Chip (Expense only) */}
+                  {txType === "expense" && !isEditing && (
+                    <Pressable
+                      onPress={() => setSplitSheetOpen(true)}
+                      className={`flex-row items-center gap-1 px-2.5 py-1 rounded-xl border active:scale-95 ${
+                        selectedSplitGroup || selectedSplitPerson
+                          ? "bg-lime/10 border-lime/30"
+                          : "bg-botanical-pearl dark:bg-forest-deep border border-botanical-border dark:border-forest-border"
+                      }`}
+                    >
+                      <Feather
+                        name="users"
+                        size={11}
+                        color={selectedSplitGroup || selectedSplitPerson ? "#16A34A" : "#64748B"}
+                      />
+                      <Text
+                        className={`text-[11px] font-bold ${
+                          selectedSplitGroup || selectedSplitPerson
+                            ? "text-emerald-700 dark:text-lime"
+                            : "text-ink dark:text-ink-light"
+                        }`}
+                      >
+                        {selectedSplitPerson
+                          ? `Split: ${selectedSplitPerson}`
+                          : selectedSplitGroup
+                          ? `Split: ${selectedSplitGroup.name}`
+                          : "Split"}
+                      </Text>
+                    </Pressable>
+                  )}
+
+                  {/* Tags Chip */}
+                  <Pressable
+                    onPress={() => setTagsSheetOpen(true)}
+                    className={`flex-row items-center gap-1 px-2.5 py-1 rounded-xl border active:scale-95 ${
+                      selectedTags.length > 0
+                        ? "bg-forest dark:bg-lime border-forest dark:border-lime"
+                        : "bg-botanical-pearl dark:bg-forest-deep border border-botanical-border dark:border-forest-border"
+                    }`}
+                  >
+                    <Feather
+                      name="hash"
+                      size={11}
+                      color={selectedTags.length > 0 ? "#FFFFFF" : "#64748B"}
+                    />
+                    <Text
+                      className={`text-[11px] font-bold ${
+                        selectedTags.length > 0
+                          ? "text-white dark:text-forest"
+                          : "text-ink dark:text-ink-light"
+                      }`}
+                    >
+                      {selectedTags.length > 0 ? `${selectedTags.length} tags` : "Tag"}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {/* Split preview text indicator if any */}
+                {splitPreviewText && (
+                  <Text className="text-[10px] font-bold text-emerald-600 dark:text-lime">
+                    50/50 split active
+                  </Text>
+                )}
+              </View>
+            </Animated.View>
+          </Animated.View>
+        </ScrollView>
+
+        {/* ── 4. TACTILE NUMPAD & GUARANTEED UN-SQUASHED SUBMIT CTA ── */}
+        <Animated.View
+          entering={FadeInDown.duration(340).delay(110)}
+          className="w-full px-5 pb-3 pt-1"
+        >
+          {!isAmountLocked && (
+            <>
+              {/* Compact Operator Strip */}
+              <View className="flex-row gap-2 mb-2">
+                {["+", "-", "×", "÷", "="].map((op) => (
+                  <Pressable
+                    key={op}
+                    onPress={() => handleKey(op)}
+                    className="flex-1 h-10 rounded-xl bg-botanical-pearl dark:bg-forest-surface border border-botanical-border dark:border-forest-border items-center justify-center active:scale-95 shadow-2xs"
+                  >
+                    <Text className="text-base font-black text-ink dark:text-ink-light">
+                      {op}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              {/* 3x4 Proportional Tactile Numpad */}
+              <View className="gap-2">
+                {[
+                  ["1", "2", "3"],
+                  ["4", "5", "6"],
+                  ["7", "8", "9"],
+                ].map((row, rowIdx) => (
+                  <View key={rowIdx} className="flex-row gap-2">
+                    {row.map((num) => (
+                      <Pressable
+                        key={num}
+                        onPress={() => handleKey(num)}
+                        className="flex-1 h-14 rounded-2xl bg-white dark:bg-forest-surface border border-botanical-border dark:border-forest-border items-center justify-center shadow-2xs active:scale-95"
+                      >
+                        <Text className="text-2xl font-bold text-ink dark:text-ink-light">
+                          {num}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ))}
+
+                <View className="flex-row gap-2">
+                  <Pressable
+                    onPress={() => handleKey(".")}
+                    className="flex-1 h-14 rounded-2xl bg-white dark:bg-forest-surface border border-botanical-border dark:border-forest-border items-center justify-center shadow-2xs active:scale-95"
+                  >
+                    <Text className="text-2xl font-bold text-ink dark:text-ink-light">
+                      .
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => handleKey("0")}
+                    className="flex-1 h-14 rounded-2xl bg-white dark:bg-forest-surface border border-botanical-border dark:border-forest-border items-center justify-center shadow-2xs active:scale-95"
+                  >
+                    <Text className="text-2xl font-bold text-ink dark:text-ink-light">
+                      0
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => handleKey("BACK")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Backspace"
+                    className="flex-1 h-14 rounded-2xl bg-white dark:bg-forest-surface border border-botanical-border dark:border-forest-border items-center justify-center shadow-2xs active:scale-95"
+                  >
+                    <Ionicons
+                      name="backspace-outline"
+                      size={22}
+                      color="#64748B"
+                    />
+                  </Pressable>
+                </View>
+              </View>
+            </>
+          )}
+
+          {/* ── 5. MAIN ACTION BUTTON (EXPLICIT HEIGHT, NEVER SQUASHED) ── */}
+          <View className="mt-3 shrink-0">
+            <Pressable
+              onPress={hasMathOperator ? () => handleKey("=") : handleSubmit}
+              disabled={isPending || (isEditing && !editEligibility.canEdit)}
+              className="w-full h-14 shrink-0 bg-primary rounded-2xl flex-row items-center justify-center gap-2 active:scale-98 shadow-sm border border-primary disabled:opacity-50"
+            >
+              <Feather
+                name={hasMathOperator ? "check" : isEditing ? "save" : "plus"}
+                size={18}
+                color="#FFFFFF"
+              />
+              <Text className="text-sm font-black text-white tracking-wide">
+                {isPending
+                  ? "Saving..."
+                  : hasMathOperator
+                  ? `Calculate (${formatCurrency(
+                      computedAmount,
+                      activeCurrency,
+                    )})`
+                  : isEditing
+                  ? "Update Transaction"
+                  : txType === "income"
+                  ? `Record Income • ${formatCurrency(
+                      computedAmount,
+                      activeCurrency,
+                    )}`
+                  : txType === "transfer"
+                  ? `Transfer Funds • ${formatCurrency(
+                      computedAmount,
+                      activeCurrency,
+                    )}`
+                  : `Add Expense • ${formatCurrency(
+                      computedAmount,
+                      activeCurrency,
+                    )}`}
+              </Text>
             </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
+          </View>
+        </Animated.View>
+
+        {/* ── 6. BOTTOM PICKER SHEETS ── */}
+        <CategorySheetModal
+          visible={categorySheetOpen}
+          categories={categories}
+          activeCategoryId={activeCategory?.id}
+          onSelect={(catId) => setSelectedCategoryId(catId)}
+          onClose={() => setCategorySheetOpen(false)}
+        />
+
+        <AccountSheetModal
+          visible={accountSheetOpen}
+          txType={txType}
+          accounts={accounts}
+          selectedAccountId={selectedAccountId}
+          sourceAccountId={sourceAccount?.id}
+          selectedTransferAccountId={selectedTransferAccountId}
+          selectionTarget={accountPickerTarget}
+          onSelectSource={(id) => setSelectedAccountId(id)}
+          onSelectTarget={(id) => setSelectedTransferAccountId(id)}
+          onClose={() => setAccountSheetOpen(false)}
+        />
+
+        <DateSheetModal
+          visible={dateSheetOpen}
+          dateSelection={dateSelection}
+          customDate={customDate}
+          onSelectDateType={setDateSelection}
+          onChangeCustomDate={setCustomDate}
+          onClose={() => setDateSheetOpen(false)}
+        />
+
+        <TagsSheetModal
+          visible={tagsSheetOpen}
+          availableTags={allAvailableTags}
+          selectedTags={selectedTags}
+          onToggleTag={toggleTag}
+          onAddCustomTag={addCustomTag}
+          onClose={() => setTagsSheetOpen(false)}
+        />
+
+        <TransactionSplitSheet
+          visible={splitSheetOpen}
+          groups={groups}
+          peopleSummaries={peopleSummaries}
+          selectedSplitGroup={selectedSplitGroup}
+          selectedSplitPerson={selectedSplitPerson}
+          splitPaidBy={splitPaidBy}
+          onChangePaidBy={setSplitPaidBy}
+          onSelectGroup={setSelectedSplitGroup}
+          onSelectPerson={setSelectedSplitPerson}
+          onClose={() => setSplitSheetOpen(false)}
+        />
+
+        <ReceiptScannerModal
+          visible={scannerModalOpen}
+          onClose={() => setScannerModalOpen(false)}
+          onApplyScannedData={applyScannedReceipt}
+          currency={activeCurrency}
+        />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

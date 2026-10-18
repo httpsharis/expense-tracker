@@ -21,9 +21,11 @@ import {
   type DetailedTransactionItem,
   TransactionDetailModal,
   TransactionRowItem,
-} from "@features/home";
+} from "@features/transactions";
 
 import { matchesBudgetFilter } from "@shared/lib/budgetCalculations";
+import { mapTransactionToDetailedItem } from "@shared/lib/transactionMapper";
+import { ErrorState } from "@shared/ui/ErrorState";
 import { usePrompt } from "@store/promptStore";
 import { useUserStore } from "@store/userStore";
 
@@ -40,6 +42,8 @@ export default function BudgetDetailScreen() {
     accounts,
     transactions,
     isLoading,
+    isError,
+    error,
     refreshing,
     refetchAll,
     upsertBudget,
@@ -61,46 +65,33 @@ export default function BudgetDetailScreen() {
     const matching = transactions.filter((tx) =>
       matchesBudgetFilter(tx, budget, activeDate),
     );
+    const today = new Date();
+    const categoryMap = new Map(
+      categories.map((c) => [c.id, { name: c.name, icon: c.icon }]),
+    );
+    const accountMap = new Map(accounts.map((a) => [a.id, a.name]));
 
-    return matching.map((tx) => {
-      const cat = categories.find((c) => c.id === tx.category_id);
-      const acc = accounts.find((a) => a.id === tx.account_id);
-      const txDate = new Date(tx.date);
-      const dateStr = txDate.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      });
-      const time = txDate.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      return {
-        id: tx.id,
-        name: tx.description || cat?.name || "Expense",
-        note: (tx as any).notes || tx.description || null,
-        time,
-        dateStr,
-        amount: -Math.abs(Number(tx.amount)),
-        type: "expense" as const,
-        categoryName: cat?.name || "Uncategorized",
-        categoryIcon: cat?.icon || "🏷️",
-        accountName: acc?.name || "Cash",
-        currency: storeCurrency || "PKR",
-        inputMethod: (tx.input_method as any) || "manual",
-        avatarBg: "#F4F5F7",
-      };
-    });
+    return matching.map((tx) =>
+      mapTransactionToDetailedItem(
+        tx,
+        categoryMap,
+        accountMap,
+        "Cash",
+        storeCurrency || "PKR",
+        today,
+      ),
+    );
   }, [transactions, budget, activeDate, categories, accounts, storeCurrency]);
 
   const handleSaveBudget = async (payload: SaveBudgetPayload) => {
     try {
       await upsertBudget(payload);
       setEditModalVisible(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       await alert({
         title: "Update Failed",
-        message: err?.message || "Could not update budget.",
+        message:
+          err instanceof Error ? err.message : "Could not update budget.",
         variant: "warning",
       });
     }
@@ -122,10 +113,11 @@ export default function BudgetDetailScreen() {
     try {
       await deleteBudget(budget.id);
       router.back();
-    } catch (err: any) {
+    } catch (err: unknown) {
       await alert({
         title: "Action Failed",
-        message: err?.message || "Failed to remove budget.",
+        message:
+          err instanceof Error ? err.message : "Failed to remove budget.",
         variant: "warning",
       });
     }
@@ -133,21 +125,35 @@ export default function BudgetDetailScreen() {
 
   if (isLoading && !refreshing) {
     return (
-      <SafeAreaView className="flex-1 bg-[#F8F9FB] items-center justify-center">
-        <ActivityIndicator size="large" color="#090D16" />
+      <SafeAreaView className="flex-1 bg-canvas items-center justify-center">
+        <ActivityIndicator size="large" color="#22C55E" />
+      </SafeAreaView>
+    );
+  }
+
+  if (isError) {
+    return (
+      <SafeAreaView className="flex-1 bg-canvas p-6 justify-center">
+        <ErrorState
+          title="Could not load budget"
+          message={
+            error instanceof Error ? error.message : "Failed to load budget."
+          }
+          onRetry={refetchAll}
+        />
       </SafeAreaView>
     );
   }
 
   if (!budget) {
     return (
-      <SafeAreaView className="flex-1 bg-[#F8F9FB] p-6 items-center justify-center">
-        <Text className="text-base font-bold text-[#090D16] mb-2">
+      <SafeAreaView className="flex-1 bg-canvas p-6 items-center justify-center">
+        <Text className="text-base font-bold text-ink mb-2">
           Budget not found
         </Text>
         <Pressable
           onPress={() => router.back()}
-          className="bg-[#090D16] px-5 py-2.5 rounded-full"
+          className="bg-primary px-5 py-2.5 rounded-full shadow-sm"
         >
           <Text className="text-xs font-bold text-white">Go back</Text>
         </Pressable>
@@ -156,25 +162,25 @@ export default function BudgetDetailScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FB]" edges={["top"]}>
+    <SafeAreaView className="flex-1 bg-canvas" edges={["top"]}>
       {/* 1. Header Bar */}
-      <View className="flex-row items-center justify-between px-5 py-3 bg-white border-b border-[#E4E7EC]">
+      <View className="flex-row items-center justify-between px-5 py-3 bg-surface border-b border-surface-border">
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          className="w-10 h-10 rounded-full bg-white border border-[#E4E7EC] items-center justify-center active:scale-95 shadow-2xs"
+          className="w-10 h-10 rounded-full bg-surface-muted border border-surface-border items-center justify-center active:scale-95 shadow-2xs"
         >
-          <Feather name="arrow-left" size={18} color="#090D16" />
+          <Feather name="arrow-left" size={18} color="#71717A" />
         </Pressable>
 
         <View className="items-center">
-          <Text className="text-base font-black text-[#090D16] tracking-tight">
+          <Text className="text-base font-black text-ink tracking-tight">
             {budget.name}
           </Text>
           <View className="flex-row items-center gap-1 mt-0.5">
-            <View className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <Text className="text-[10px] font-bold text-[#64748B]">
+            <View className="w-1.5 h-1.5 rounded-full bg-primary" />
+            <Text className="text-[10px] font-bold text-ink-muted">
               {budget.periodLabel}
             </Text>
           </View>
@@ -185,18 +191,18 @@ export default function BudgetDetailScreen() {
             onPress={() => setEditModalVisible(true)}
             accessibilityRole="button"
             accessibilityLabel="Edit budget"
-            className="w-9 h-9 rounded-full bg-[#F4F5F7] border border-[#E4E7EC] items-center justify-center active:scale-95 shadow-2xs"
+            className="w-9 h-9 rounded-full bg-surface-muted border border-surface-border items-center justify-center active:scale-95 shadow-2xs"
           >
-            <Feather name="edit-2" size={14} color="#090D16" />
+            <Feather name="edit-2" size={14} color="#71717A" />
           </Pressable>
           <Pressable
             onPress={handleDeleteBudget}
             disabled={isSaving}
             accessibilityRole="button"
             accessibilityLabel="Delete budget"
-            className="w-9 h-9 rounded-full bg-rose-50 border border-rose-100 items-center justify-center active:scale-95 shadow-2xs"
+            className="w-9 h-9 rounded-full bg-rose-500/10 border border-rose-500/20 items-center justify-center active:scale-95 shadow-2xs"
           >
-            <Feather name="trash-2" size={14} color="#E11D48" />
+            <Feather name="trash-2" size={14} color="#EF4444" />
           </Pressable>
         </View>
       </View>
@@ -211,7 +217,7 @@ export default function BudgetDetailScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={refetchAll}
-            tintColor="#090D16"
+            tintColor="#22C55E"
           />
         }
         ListHeaderComponent={
@@ -227,17 +233,17 @@ export default function BudgetDetailScreen() {
             {/* Matching Ledger Transactions Section Header */}
             <View className="flex-row items-center justify-between mt-4 mb-2.5 px-1">
               <View className="flex-row items-center gap-1.5">
-                <Text className="text-xs font-black text-[#090D16] uppercase tracking-wider">
+                <Text className="text-xs font-black text-ink uppercase tracking-wider">
                   Matching Transactions
                 </Text>
-                <View className="px-2 py-0.5 rounded-full bg-[#F4F5F7] border border-[#E4E7EC]">
-                  <Text className="text-[10px] font-bold text-[#090D16]">
+                <View className="px-2 py-0.5 rounded-full bg-surface-muted border border-surface-border">
+                  <Text className="text-[10px] font-bold text-ink">
                     {detailedTransactions.length}
                   </Text>
                 </View>
               </View>
 
-              <Text className="text-[11px] font-semibold text-[#64748B]">
+              <Text className="text-[11px] font-semibold text-ink-muted">
                 {budget.periodLabel}
               </Text>
             </View>
@@ -249,14 +255,14 @@ export default function BudgetDetailScreen() {
           </View>
         )}
         ListEmptyComponent={
-          <View className="p-8 items-center justify-center bg-white rounded-3xl mx-5 border border-dashed border-[#E4E7EC] shadow-2xs">
-            <View className="w-12 h-12 rounded-2xl bg-[#F4F5F7] items-center justify-center mb-3">
-              <Feather name="inbox" size={20} color="#94A3B8" />
+          <View className="p-8 items-center justify-center bg-surface rounded-3xl mx-5 border border-dashed border-surface-border shadow-2xs">
+            <View className="w-12 h-12 rounded-2xl bg-surface-muted border border-surface-border items-center justify-center mb-3">
+              <Feather name="inbox" size={20} color="#71717A" />
             </View>
-            <Text className="text-sm font-black text-[#090D16] mb-1">
+            <Text className="text-sm font-black text-ink mb-1">
               No matching activity
             </Text>
-            <Text className="text-xs text-[#64748B] text-center max-w-[240px] leading-relaxed">
+            <Text className="text-xs text-ink-muted text-center max-w-[240px] leading-relaxed">
               Expenses matching this budget's filter during{" "}
               {budget.periodLabel.toLowerCase()} will appear here automatically.
             </Text>

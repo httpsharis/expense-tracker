@@ -1,5 +1,5 @@
 import Feather from "@expo/vector-icons/Feather";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { DEFAULT_CATEGORIES } from "../../../../services/categories";
+import { getErrorMessage } from "../../../shared/lib/errors";
 import type { BudgetFormModalProps, BudgetPeriod, SaveBudgetPayload } from "../types";
 
 const PERIODS: Array<{ key: BudgetPeriod; label: string }> = [
@@ -24,6 +25,7 @@ const PERIODS: Array<{ key: BudgetPeriod; label: string }> = [
 ];
 
 const INCREMENTS = [1000, 5000, 10000, 25000];
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 export function BudgetFormModal({
   visible,
@@ -36,10 +38,6 @@ export function BudgetFormModal({
   onSave,
   onDelete,
   isSaving,
-  budgetId,
-  initialCategoryId,
-  initialAmount,
-  initialConfig,
 }: BudgetFormModalProps) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
@@ -49,6 +47,7 @@ export function BudgetFormModal({
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [error, setError] = useState("");
+  const submittingRef = useRef(false);
 
   const activeCategories = useMemo(() => {
     if (categories && categories.length > 0) return categories;
@@ -66,22 +65,23 @@ export function BudgetFormModal({
     if (!visible) return;
     setError("");
 
-    const config = initialBudget || initialConfig || {};
+    const config = initialBudget ?? {};
     const effectiveName = config.name || "";
-    const effectiveAmount = config.amount ?? initialAmount ?? "";
-    const effectivePeriod = config.period_type || config.period || "month";
-    const effectiveCatId =
-      config.category_id ?? config.categoryId ?? initialCategoryId ?? null;
-    const effectiveAccId = config.account_id ?? config.accountId ?? null;
+    const effectiveAmount = config.amount ?? "";
+    const effectivePeriod = config.period_type || "month";
+    const effectiveCatId = config.category_id ?? null;
+    const effectiveAccId = config.account_id ?? null;
 
     setName(effectiveName);
     setAmount(effectiveAmount ? String(effectiveAmount) : "");
     setPeriod(effectivePeriod);
     setCategoryId(effectiveCatId === "all" ? null : effectiveCatId);
     setAccountId(effectiveAccId === "all" ? null : effectiveAccId);
-    setCustomStart(config.period_start || "");
-    setCustomEnd(config.period_end || "");
-  }, [visible, initialBudget, initialConfig, initialAmount, initialCategoryId]);
+    setCustomStart(
+      effectivePeriod === "custom" ? config.period_start || "" : "",
+    );
+    setCustomEnd(effectivePeriod === "custom" ? config.period_end || "" : "");
+  }, [visible, initialBudget]);
 
   const handleAddIncrement = (inc: number) => {
     const curr = parseFloat(amount.replace(/[^0-9.]/g, "")) || 0;
@@ -95,15 +95,27 @@ export function BudgetFormModal({
   };
 
   const handleSave = async () => {
+    if (submittingRef.current || isSaving) return;
     const numAmount = parseFloat(amount.replace(/[^0-9.]/g, ""));
     if (isNaN(numAmount) || numAmount <= 0) {
       setError("Please enter a valid amount greater than 0");
       return;
     }
 
-    if (period === "custom" && (!customStart || !customEnd)) {
-      setError("Please specify both start and end dates (YYYY-MM-DD)");
-      return;
+    if (period === "custom") {
+      const startTrimmed = customStart.trim();
+      const endTrimmed = customEnd.trim();
+      if (
+        !ISO_DATE_REGEX.test(startTrimmed) ||
+        !ISO_DATE_REGEX.test(endTrimmed)
+      ) {
+        setError("Please specify valid start and end dates (YYYY-MM-DD)");
+        return;
+      }
+      if (startTrimmed > endTrimmed) {
+        setError("Start date cannot be after end date");
+        return;
+      }
     }
 
     const resolvedName =
@@ -115,21 +127,24 @@ export function BudgetFormModal({
         : "Total Budget");
 
     const payload: SaveBudgetPayload = {
-      id: initialBudget?.id || budgetId,
+      id: initialBudget?.id,
       name: resolvedName,
       amount: numAmount,
       period_type: period,
       category_id: categoryId,
       account_id: accountId,
-      period_start: period === "custom" ? customStart : null,
-      period_end: period === "custom" ? customEnd : null,
+      period_start: period === "custom" ? customStart.trim() : null,
+      period_end: period === "custom" ? customEnd.trim() : null,
     };
 
+    submittingRef.current = true;
     try {
       await onSave(payload);
       onClose();
-    } catch (err: any) {
-      setError(err?.message || "Failed to save budget");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to save budget"));
+    } finally {
+      submittingRef.current = false;
     }
   };
 
@@ -608,7 +623,7 @@ export function BudgetFormModal({
               {mode === "edit" && onDelete && (
                 <Pressable
                   onPress={() => {
-                    const idToDelete = initialBudget?.id || budgetId;
+                    const idToDelete = initialBudget?.id;
                     if (idToDelete) onDelete(idToDelete);
                   }}
                   disabled={isSaving}

@@ -1,13 +1,22 @@
 import { useUser } from "@clerk/expo";
-import { useEffect } from "react";
-import { useUserStore } from "../../../store/userStore";
+import { useCallback, useEffect, useState } from "react";
+import { ensureDefaultAccounts } from "@services/accounts";
+import { useUserStore } from "@store/userStore";
 import { useSupabase } from "./useSupabase";
 
 export const useUserSync = () => {
   const { user, isLoaded } = useUser();
   const setCurrency = useUserStore((state) => state.setCurrency);
+  const setDisplayName = useUserStore((state) => state.setDisplayName);
   const setNeedsOnboarding = useUserStore((state) => state.setNeedsOnboarding);
   const authSupabase = useSupabase();
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [retryTrigger, setRetryTrigger] = useState(0);
+
+  const retrySync = useCallback(() => {
+    setSyncError(null);
+    setRetryTrigger((prev) => prev + 1);
+  }, []);
 
   useEffect(() => {
     if (!isLoaded || !user) return;
@@ -16,10 +25,11 @@ export const useUserSync = () => {
 
     const syncUser = async (attempt = 1) => {
       try {
-        // 1. Fetch user profile (maybeSingle prevents PGRST116 errors on new accounts)
+        setSyncError(null);
+
         const { data: existingUser, error: fetchError } = await authSupabase
           .from("profiles")
-          .select("id, currency")
+          .select("id, currency, name")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -27,25 +37,22 @@ export const useUserSync = () => {
 
         if (fetchError) {
           console.warn(`[useUserSync] Attempt ${attempt} failed:`, fetchError.message);
-          // If token clock skew ("not yet valid"), retry up to 3 times
           if (attempt < 3 && fetchError.message?.toLowerCase().includes("not yet valid")) {
             await new Promise((r) => setTimeout(r, 1200));
             if (!isCancelled) return syncUser(attempt + 1);
           }
-          // Do not leave app stuck in loading state indefinitely
-          if (useUserStore.getState().needsOnboarding === null) {
-            setNeedsOnboarding(false);
-          }
+          setSyncError(fetchError.message || "Unable to verify your profile.");
           return;
         }
 
-        // 2. Profile found in database
         if (existingUser) {
           if (existingUser.currency) {
             setCurrency(existingUser.currency);
           }
+          if (existingUser.name) {
+            setDisplayName(existingUser.name);
+          }
 
-          // Check whether the user has at least one account to determine onboarding completion
           const { count, error: countError } = await authSupabase
             .from("accounts")
             .select("id", { count: "exact", head: true })
@@ -53,15 +60,15 @@ export const useUserSync = () => {
 
           if (isCancelled) return;
 
-          if (!countError && typeof count === "number" && count > 0) {
-            setNeedsOnboarding(false);
-          } else {
-            setNeedsOnboarding(true);
+          if (!countError && (!count || count === 0)) {
+            // Automatically ensure Cash, Bank, and Savings accounts exist
+            await ensureDefaultAccounts(authSupabase, user.id, existingUser.currency || "PKR");
           }
+
+          setNeedsOnboarding(false);
           return;
         }
 
-        // 3. Brand new user -> create initial profile record
         const email = user.emailAddresses[0]?.emailAddress ?? "";
         const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim();
 
@@ -73,36 +80,47 @@ export const useUserSync = () => {
               email,
               name: fullName || null,
               image_url: user.imageUrl || null,
-              currency: "USD",
+              currency: "PKR",
               month_start_day: 1,
             },
             { onConflict: "id" }
           )
-          .select("currency")
+          .select("currency, name")
           .maybeSingle();
 
         if (isCancelled) return;
 
         if (insertError) {
           console.error("Error upserting user profile:", insertError.message);
+          setSyncError(insertError.message || "Unable to create your profile.");
           return;
         }
 
         if (newProfile?.currency) {
           setCurrency(newProfile.currency);
         }
+        if (newProfile?.name) {
+          setDisplayName(newProfile.name);
+        }
 
-        // Needs onboarding so they pick their starting currency & balance
+        // Ensure default accounts exist for newly created profile
+        await ensureDefaultAccounts(authSupabase, user.id, newProfile?.currency || "PKR");
         setNeedsOnboarding(true);
-      } catch (err: any) {
-        console.error("Unexpected error in useUserSync:", err?.message || err);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "unknown error";
+        console.error("Unexpected error in useUserSync:", message);
+        if (!isCancelled) {
+          setSyncError(message);
+        }
       }
     };
 
-    syncUser();
+    void syncUser();
 
     return () => {
       isCancelled = true;
     };
-  }, [isLoaded, user?.id, authSupabase, setCurrency, setNeedsOnboarding]);
+  }, [isLoaded, user?.id, authSupabase, setCurrency, setDisplayName, setNeedsOnboarding, retryTrigger]);
+
+  return { syncError, retrySync };
 };

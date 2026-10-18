@@ -1,25 +1,17 @@
+import type { DetailedTransactionItem } from "@shared/types/models";
 import type { AccountWithBalance } from "../../../services/accounts";
-import type { InputMethod, TransactionType } from "../../../services/transactions";
+import type { TransactionWithCategory } from "../../../services/transactions";
 
-// ────────────────────────────────────────────────
-// Domain: Transaction display model (UI-layer DTO)
-// ────────────────────────────────────────────────
+export type { DetailedTransactionItem } from "@shared/types/models";
 
-/** Fully resolved transaction ready for UI rendering — no raw DB joins needed. */
-export interface DetailedTransactionItem {
+export interface CategoryAllocation {
   id: string;
   name: string;
-  note?: string | null;
-  time: string;
-  dateStr: string;
-  amount: number;
-  type: TransactionType;
-  categoryName: string;
-  categoryIcon: string;
-  accountName: string;
-  currency: string;
-  inputMethod: InputMethod;
-  avatarBg: string;
+  icon?: string | null;
+  spent: number;
+  budget: number;
+  percent: number;
+  color: string;
 }
 
 // ────────────────────────────────────────────────
@@ -45,6 +37,8 @@ export interface HomeScreenData {
   // Monthly metrics
   monthlyIncome: number;
   monthlyExpenses: number;
+  monthlyNet: number;
+  monthStartMode: "remaining" | "zero";
   totalBudget: number;
   remainingBudget: number;
   budgetProgressPercent: number;
@@ -52,11 +46,25 @@ export interface HomeScreenData {
   daysRemaining: number;
   cycleMonthName: string;
 
+  // Split & Obligation Telemetry (Stitch Bento Cards)
+  totalOwedToMe: number;
+  totalIOwe: number;
+  pendingOwedCount: number;
+  pendingDebtors: string[];
+
+  // Category allocations for budget breakdown
+  categoryAllocations: CategoryAllocation[];
+
   // Feed
   feedTransactions: DetailedTransactionItem[];
+  rawFeedTransactions: TransactionWithCategory[];
+
+  selectedBudgetName?: string;
 
   // Query states
   isLoading: boolean;
+  isError: boolean;
+  error: unknown;
   onRefresh: () => Promise<void>;
   refreshing: boolean;
 }
@@ -64,18 +72,6 @@ export interface HomeScreenData {
 // ────────────────────────────────────────────────
 // Component Props
 // ────────────────────────────────────────────────
-
-export interface TransactionRowItemProps {
-  item: DetailedTransactionItem;
-  onPress: (item: DetailedTransactionItem) => void;
-}
-
-export interface TransactionDetailModalProps {
-  transaction: DetailedTransactionItem | null;
-  onClose: () => void;
-  onDelete?: (transaction: DetailedTransactionItem) => void;
-  onEdit?: (transaction: DetailedTransactionItem) => void;
-}
 
 export interface AccountSwitcherModalProps {
   visible: boolean;

@@ -17,6 +17,8 @@ export function useBudgetsData() {
   const {
     data: rawBudgets = [],
     isLoading: budgetsLoading,
+    isError: budgetsError,
+    error: budgetsErrorObj,
     refetch: refetchBudgets,
   } = useBudgetsQuery();
 
@@ -35,6 +37,8 @@ export function useBudgetsData() {
   const {
     data: transactions = [],
     isLoading: txLoading,
+    isError: txError,
+    error: txErrorObj,
     refetch: refetchTransactions,
   } = useTransactionsQuery({});
 
@@ -91,6 +95,8 @@ export function useBudgetsData() {
     accounts,
     transactions,
     isLoading: budgetsLoading || categoriesLoading || accountsLoading || txLoading,
+    isError: budgetsError || txError,
+    error: budgetsErrorObj ?? txErrorObj,
     refreshing,
     refetchAll,
     upsertBudget: (payload: SaveBudgetPayload) => upsertMutation.mutateAsync(payload),

@@ -24,13 +24,13 @@ export function AccountFilterChips({
               accessibilityLabel={`Filter by ${item.label}`}
               className={`px-4 py-2 rounded-full border active:scale-98 ${
                 isActive
-                  ? "bg-[#090D16] border-[#090D16]"
-                  : "bg-white border-[#E4E7EC]"
+                  ? "bg-[#090D16] dark:bg-zinc-100 border-[#090D16] dark:border-zinc-100"
+                  : "bg-white dark:bg-[#161B26] border-[#E4E7EC] dark:border-zinc-800"
               }`}
             >
               <Text
                 className={`text-xs font-semibold ${
-                  isActive ? "text-white" : "text-[#525866]"
+                  isActive ? "text-white dark:text-zinc-950" : "text-[#525866] dark:text-zinc-400"
                 }`}
               >
                 {item.label}
