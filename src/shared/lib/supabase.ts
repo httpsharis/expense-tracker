@@ -78,21 +78,3 @@ export function createSupabaseClient(
     },
   });
 }
-
-/**
- * Fallback client instance for unauthenticated reads.
- */
-export const supabase: SupabaseClient<Database, 'public'> =
-  createClient<Database, 'public'>(supabaseUrl, supabaseAnonKey, {
-    db: {
-      schema: 'public',
-    },
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-    realtime: {
-      transport: SafeWebSocket,
-    },
-  });

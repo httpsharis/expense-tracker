@@ -144,39 +144,79 @@ export type Database = {
       }
       budgets: {
         Row: {
+          account_id: string | null
           amount: number
-          category_id: string
+          category_id: string | null
           created_at: string
+          description: string | null
           id: string
+          inclusion_mode: string | null
           last_alert_sent: string | null
           last_alert_threshold: number | null
-          month_date: string
+          month_date: string | null
+          name: string
+          period: string | null
+          period_end: string | null
+          period_start: string | null
+          period_type: string
+          selected_transaction_ids: string[] | null
+          transaction_filter: string | null
+          type: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          account_id?: string | null
           amount: number
-          category_id: string
+          category_id?: string | null
           created_at?: string
+          description?: string | null
           id?: string
+          inclusion_mode?: string | null
           last_alert_sent?: string | null
           last_alert_threshold?: number | null
-          month_date: string
+          month_date?: string | null
+          name?: string
+          period?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          period_type?: string
+          selected_transaction_ids?: string[] | null
+          transaction_filter?: string | null
+          type?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          account_id?: string | null
           amount?: number
-          category_id?: string
+          category_id?: string | null
           created_at?: string
+          description?: string | null
           id?: string
+          inclusion_mode?: string | null
           last_alert_sent?: string | null
           last_alert_threshold?: number | null
-          month_date?: string
+          month_date?: string | null
+          name?: string
+          period?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          period_type?: string
+          selected_transaction_ids?: string[] | null
+          transaction_filter?: string | null
+          type?: string | null
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "budgets_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "budgets_category_id_fkey"
             columns: ["category_id"]
@@ -528,6 +568,7 @@ export type Database = {
           is_group: boolean
           status: string
           subscription_id: string | null
+          tags?: string[] | null
           transfer_account_id: string | null
           type: string
           user_id: string
@@ -547,6 +588,7 @@ export type Database = {
           is_group?: boolean
           status?: string
           subscription_id?: string | null
+          tags?: string[] | null
           transfer_account_id?: string | null
           type: string
           user_id: string
@@ -566,6 +608,7 @@ export type Database = {
           is_group?: boolean
           status?: string
           subscription_id?: string | null
+          tags?: string[] | null
           transfer_account_id?: string | null
           type?: string
           user_id?: string

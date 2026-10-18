@@ -1,5 +1,14 @@
 import type { TransactionWithCategory } from "../../../services/transactions";
 import type { Budget, BudgetPeriod, BudgetWithDerived } from "../../features/budgets/types";
+import {
+  endOfLocalDay,
+  endOfLocalMonth,
+  formatLocalDateKey,
+  parseLocalDate,
+  startOfLocalDay,
+  startOfLocalMonth,
+} from "./dates";
+import { addMoney, fromMinorUnits, subtractMoney, toMinorUnits } from "./money";
 
 /**
  * Pure math & ledger transformation helpers for budgets, spending limits, and pacing.
@@ -23,8 +32,8 @@ export function getPeriodBounds(
   const ref = new Date(referenceDate);
 
   if (periodType === "day") {
-    const start = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0, 0, 0, 0);
-    const end = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 23, 59, 59, 999);
+    const start = startOfLocalDay(ref);
+    const end = endOfLocalDay(ref);
     return { start, end, label: "Today" };
   }
 
@@ -47,10 +56,8 @@ export function getPeriodBounds(
   }
 
   if (periodType === "custom" && customStart && customEnd) {
-    const start = new Date(customStart);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(customEnd);
-    end.setHours(23, 59, 59, 999);
+    const start = startOfLocalDay(parseLocalDate(customStart));
+    const end = endOfLocalDay(parseLocalDate(customEnd));
 
     const startStr = start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     const endStr = end.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -58,14 +65,14 @@ export function getPeriodBounds(
   }
 
   // Default: Month
-  const start = new Date(ref.getFullYear(), ref.getMonth(), 1, 0, 0, 0, 0);
-  const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 0, 23, 59, 59, 999);
+  const start = startOfLocalMonth(ref);
+  const end = endOfLocalMonth(ref);
   return { start, end, label: "This Month" };
 }
 
 /**
  * Checks if a transaction automatically matches a budget's filter and current period.
- * Ledger Invariant: Only expenses count towards spending limits.
+ * Ledger Invariant: Only completed expense transactions count towards spending limits.
  * An empty category_id / account_id means "all".
  */
 export function matchesBudgetFilter(
@@ -73,8 +80,8 @@ export function matchesBudgetFilter(
   budget: Pick<Budget, "category_id" | "account_id" | "period_type" | "period_start" | "period_end">,
   referenceDate = new Date()
 ): boolean {
-  // 1. Only expense transactions count
-  if (tx.type !== "expense") return false;
+  // 1. Only completed expense transactions count
+  if (tx.type !== "expense" || tx.status !== "completed") return false;
 
   // 2. Period bounds check
   const bounds = getPeriodBounds(
@@ -83,7 +90,7 @@ export function matchesBudgetFilter(
     budget.period_start,
     budget.period_end
   );
-  const txTime = new Date(tx.date).getTime();
+  const txTime = parseLocalDate(tx.date).getTime();
   if (txTime < bounds.start.getTime() || txTime > bounds.end.getTime()) {
     return false;
   }
@@ -102,7 +109,7 @@ export function matchesBudgetFilter(
 }
 
 /**
- * Derives live metrics for a budget by summing matching balance entries / transactions.
+ * Derives live metrics for a budget by summing matching transactions in integer minor units.
  * Spent and remaining are NEVER stored as a running total.
  */
 export function deriveBudgetMetrics(
@@ -121,15 +128,18 @@ export function deriveBudgetMetrics(
     matchesBudgetFilter(tx, budget, referenceDate)
   );
 
-  const spent = matchingTransactions.reduce(
-    (sum, tx) => sum + Number(tx.amount || 0),
+  const spentMinor = matchingTransactions.reduce(
+    (sumMinor, tx) => sumMinor + toMinorUnits(Number(tx.amount || 0)),
     0
   );
 
-  const cap = Number(budget.amount || 0);
-  const remaining = Math.max(0, cap - spent);
-  const percent = cap > 0 ? Math.round((spent / cap) * 100) : 0;
-  const isExceeded = spent > cap;
+  const capMinor = toMinorUnits(Number(budget.amount || 0));
+  const remainingMinor = Math.max(0, capMinor - spentMinor);
+  const spent = fromMinorUnits(spentMinor);
+  const cap = fromMinorUnits(capMinor);
+  const remaining = fromMinorUnits(remainingMinor);
+  const percent = capMinor > 0 ? Math.round((spentMinor / capMinor) * 100) : 0;
+  const isExceeded = spentMinor > capMinor;
 
   const nowMs = referenceDate.getTime();
   const startMs = bounds.start.getTime();
@@ -199,27 +209,28 @@ export function isSavingsCategory(name?: string | null): boolean {
 
 /**
  * Calculates total spent per category for the specified month/cycle.
- * Only processes transactions where type === "expense".
+ * Only processes completed transactions where type === "expense".
  */
 export function calculateCategorySpending(
   transactions: TransactionWithCategory[],
   monthDate?: string
 ): Map<string, number> {
   const spendingMap = new Map<string, number>();
-  const targetDate = monthDate ? new Date(monthDate) : new Date();
+  const targetDate = monthDate ? parseLocalDate(monthDate) : new Date();
   const targetYear = targetDate.getFullYear();
   const targetMonth = targetDate.getMonth();
 
   for (const tx of transactions) {
-    if (tx.type !== "expense") continue;
+    if (tx.type !== "expense" || tx.status !== "completed") continue;
 
-    const txDate = new Date(tx.date);
+    const txDate = parseLocalDate(tx.date);
     if (
       txDate.getFullYear() === targetYear &&
       txDate.getMonth() === targetMonth
     ) {
-      const current = spendingMap.get(tx.category_id || "unbudgeted") || 0;
-      spendingMap.set(tx.category_id || "unbudgeted", current + Number(tx.amount || 0));
+      const categoryKey = tx.category_id || "unbudgeted";
+      const current = spendingMap.get(categoryKey) || 0;
+      spendingMap.set(categoryKey, addMoney(current, Number(tx.amount || 0)));
     }
   }
 
@@ -236,7 +247,7 @@ export function calculateSafeDailySpend(
   daysRemaining: number
 ): number {
   if (daysRemaining <= 0) return 0;
-  const remaining = Math.max(0, totalCap - totalSpent);
+  const remaining = Math.max(0, subtractMoney(totalCap, totalSpent));
   return remaining / daysRemaining;
 }
 
@@ -255,9 +266,7 @@ export function getDaysRemainingInMonth(referenceDate = new Date()): number {
  * Returns month formatted as "YYYY-MM-01" for query key and DB consistency.
  */
 export function getCurrentMonthDate(referenceDate = new Date()): string {
-  const year = referenceDate.getFullYear();
-  const month = String(referenceDate.getMonth() + 1).padStart(2, "0");
-  return `${year}-${month}-01`;
+  return formatLocalDateKey(startOfLocalMonth(referenceDate));
 }
 
 export type BudgetType = "expense" | "savings";
@@ -265,14 +274,16 @@ export type TransactionFilterType = "all" | "expense" | "income" | "transfer";
 export type InclusionMode = "all_matching" | "selected_only";
 
 /**
- * Computes status, percentages, and threshold flags for a budget item.
+ * Computes status, percentages, and threshold flags for a budget item in minor units.
  */
 export function getBudgetThresholdStatus(spent: number, cap: number) {
-  const percent = cap > 0 ? Math.round((spent / cap) * 100) : 0;
+  const spentMinor = toMinorUnits(spent);
+  const capMinor = toMinorUnits(cap);
+  const percent = capMinor > 0 ? Math.round((spentMinor / capMinor) * 100) : 0;
   const isWarning = percent >= 80 && percent <= 100;
-  const isExceeded = spent > cap;
-  const remaining = Math.max(0, cap - spent);
-  const overspend = Math.max(0, spent - cap);
+  const isExceeded = spentMinor > capMinor;
+  const remaining = fromMinorUnits(Math.max(0, capMinor - spentMinor));
+  const overspend = fromMinorUnits(Math.max(0, spentMinor - capMinor));
   return { percent, isWarning, isExceeded, remaining, overspend };
 }
 

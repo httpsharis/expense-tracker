@@ -2,7 +2,7 @@ import { useOAuth } from "@clerk/expo";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useState } from "react";
-import { Alert } from "react-native";
+import { usePromptStore } from "@store/promptStore";
 
 // Completes the in-app browser redirect loop cleanly
 WebBrowser.maybeCompleteAuthSession();
@@ -35,13 +35,21 @@ export function useGoogleAuth() {
       if (createdSessionId && setActive) {
         await setActive({ session: createdSessionId });
       }
-    } catch (err: any) {
-      // Catch canceled or browser-level issues
-      if (err?.code !== "ERR_REQUEST_CANCELED") {
-        Alert.alert(
-          "Google Sign-In Error",
-          err?.errors?.[0]?.message || err?.message || "Failed to complete Google sign-in."
-        );
+    } catch (err: unknown) {
+      const code =
+        typeof err === "object" && err !== null && "code" in err
+          ? (err as { code?: string }).code
+          : undefined;
+      if (code !== "ERR_REQUEST_CANCELED") {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Failed to complete Google sign-in.";
+        void usePromptStore.getState().alert({
+          title: "Google Sign-In Error",
+          message,
+          variant: "danger",
+        });
       }
     } finally {
       setIsAuthenticating(false);
