@@ -6,124 +6,175 @@ export type Category = CategoryRow;
 
 export const DEFAULT_CATEGORIES = [
   // Expense Categories
-  { name: "Food & Dining", icon: "🍔" },
-  { name: "Groceries", icon: "🛒" },
-  { name: "Shopping", icon: "🛍️" },
-  { name: "Transportation", icon: "🚗" },
-  { name: "Bills & Utilities", icon: "⚡" },
-  { name: "Housing & Rent", icon: "🏠" },
-  { name: "Entertainment", icon: "🎬" },
-  { name: "Health & Medical", icon: "💊" },
-  { name: "Personal Care", icon: "🧴" },
-  { name: "Travel & Trips", icon: "✈️" },
-  { name: "Education", icon: "🎓" },
-  { name: "Subscriptions", icon: "📱" },
+  { name: "Food & Dining", icon: "restaurant" },
+  { name: "Groceries", icon: "cart" },
+  { name: "Shopping", icon: "bag-handle" },
+  { name: "Transportation", icon: "car" },
+  { name: "Bills & Utilities", icon: "flash" },
+  { name: "Housing & Rent", icon: "home" },
+  { name: "Entertainment", icon: "film" },
+  { name: "Health & Medical", icon: "medkit" },
+  { name: "Personal Care", icon: "sparkles" },
+  { name: "Travel & Trips", icon: "airplane" },
+  { name: "Education", icon: "school" },
+  { name: "Subscriptions", icon: "calendar" },
 
   // Savings & Wealth Goals
-  { name: "Emergency Fund", icon: "🛡️" },
-  { name: "Savings", icon: "💰" },
-  { name: "Investments", icon: "📈" },
-  { name: "Gold & Metals", icon: "🪙" },
-  { name: "Future Reserve", icon: "🌱" },
-  { name: "Major Purchase", icon: "🎯" },
+  { name: "Emergency Fund", icon: "shield-checkmark" },
+  { name: "Savings", icon: "wallet" },
+  { name: "Investments", icon: "trending-up" },
+  { name: "Gold & Metals", icon: "diamond" },
+  { name: "Future Reserve", icon: "leaf" },
+  { name: "Major Purchase", icon: "flag" },
 ];
 
 /**
- * Fetches default categories plus user-created categories.
- * Resilient against RLS restrictions; returns default categories if table is empty or query fails.
+ * Fetches categories scoped strictly to the authenticated user.
+ * Seeds default categories into Postgres on first load if the user has none yet.
  */
 export async function getCategories(
   supabase: SupabaseClient<Database>,
-  userId?: string
+  userId: string,
 ): Promise<CategoryRow[]> {
-  try {
-    let query = supabase.from("categories").select("*");
+  const { data: existingCategories, error } = await supabase
+    .from("categories")
+    .select("*")
+    .eq("user_id", userId)
+    .order("name", { ascending: true });
 
-    if (userId) {
-      query = query.or(`user_id.eq.${userId},is_default.eq.true`);
-    } else {
-      query = query.eq("is_default", true);
-    }
-
-    const { data, error } = await query.order("name", { ascending: true });
-    if (!error && data && data.length > 0) {
-      return data;
-    }
-  } catch (err) {
-    console.warn("[categories] getCategories query warning:", err);
+  if (error) throw error;
+  if (existingCategories && existingCategories.length > 0) {
+    return existingCategories;
   }
 
-  // Graceful fallback to rich default categories so app never fails or throws permission denied
-  return DEFAULT_CATEGORIES.map((c, i) => ({
-    id: `default-${i}`,
-    name: c.name,
-    icon: c.icon,
+  // Ensure profiles row exists to avoid foreign key violation
+  await supabase.from("profiles").upsert(
+    { id: userId, email: "" },
+    { onConflict: "id", ignoreDuplicates: true },
+  );
+
+  const seedRows = DEFAULT_CATEGORIES.map((category) => ({
+    user_id: userId,
+    name: category.name,
+    icon: category.icon,
     is_default: true,
-    created_at: new Date().toISOString(),
-    user_id: userId || "default",
   }));
+
+  const { data: seededCategories, error: seedError } = await supabase
+    .from("categories")
+    .insert(seedRows)
+    .select("*");
+
+  if (seedError) throw seedError;
+  return (seededCategories ?? []).sort((first, second) =>
+    first.name.localeCompare(second.name),
+  );
 }
 
 /**
- * Creates a new category for a user.
+ * Creates a new custom category for a user.
  */
 export async function createCategory(
   supabase: SupabaseClient<Database>,
-  payload: { userId: string; name: string; icon?: string }
+  payload: { userId: string; name: string; icon?: string },
 ): Promise<CategoryRow> {
-  try {
-    const { data, error } = await supabase
-      .from("categories")
-      .insert({
-        user_id: payload.userId,
-        name: payload.name.trim(),
-        icon: payload.icon || "🏷️",
-        is_default: false,
-      })
-      .select("*")
-      .single();
-
-    if (error) throw error;
-    return data;
-  } catch (err: any) {
-    console.warn(
-      "createCategory remote insert restricted (RLS policy needed), using resilient fallback:",
-      err?.message
-    );
-    return {
-      id: `custom-${Date.now()}`,
-      name: payload.name.trim(),
-      icon: payload.icon || "🏷️",
-      is_default: false,
-      created_at: new Date().toISOString(),
-      user_id: payload.userId,
-    } as CategoryRow;
+  const trimmedName = payload.name.trim();
+  if (!trimmedName) {
+    throw new Error("Category name is required.");
   }
+
+  // Ensure profiles row exists to avoid foreign key violation
+  await supabase.from("profiles").upsert(
+    { id: payload.userId, email: "" },
+    { onConflict: "id", ignoreDuplicates: true },
+  );
+
+  const { data: createdCategory, error } = await supabase
+    .from("categories")
+    .insert({
+      user_id: payload.userId,
+      name: trimmedName,
+      icon: payload.icon?.trim() || "pricetag",
+      is_default: false,
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return createdCategory;
+}
+
+export interface CategoryUsageCount {
+  transactionCount: number;
+  budgetCount: number;
+  totalCount: number;
 }
 
 /**
- * Ensures a category exists by finding an existing one with the same name or creating it.
+ * Counts how many transactions and budgets reference a category.
  */
-export async function ensureCategoryExists(
+export async function getCategoryUsageCount(
   supabase: SupabaseClient<Database>,
-  payload: { userId: string; name: string; icon?: string }
-): Promise<CategoryRow> {
-  const normalized = payload.name.trim();
+  userId: string,
+  categoryId: string,
+): Promise<CategoryUsageCount> {
+  const [txResult, budgetResult] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("category_id", categoryId),
+    supabase
+      .from("budgets")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("category_id", categoryId),
+  ]);
 
-  try {
-    const { data: existing, error } = await supabase
-      .from("categories")
-      .select("*")
-      .ilike("name", normalized)
-      .limit(1)
-      .maybeSingle();
+  if (txResult.error) throw txResult.error;
+  if (budgetResult.error) throw budgetResult.error;
 
-    if (!error && existing) return existing;
-  } catch (err) {
-    console.warn("[categories] ensureCategoryExists lookup warning:", err);
-  }
-
-  // Create new or fallback
-  return createCategory(supabase, payload);
+  const transactionCount = txResult.count ?? 0;
+  const budgetCount = budgetResult.count ?? 0;
+  return {
+    transactionCount,
+    budgetCount,
+    totalCount: transactionCount + budgetCount,
+  };
 }
 
+/**
+ * Deletes an unused category owned by the user.
+ * Blocks deletion if any transaction or budget references the category.
+ */
+export async function deleteCategory(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  categoryId: string,
+): Promise<void> {
+  const usage = await getCategoryUsageCount(supabase, userId, categoryId);
+  if (usage.totalCount > 0) {
+    const parts: string[] = [];
+    if (usage.transactionCount > 0) {
+      parts.push(
+        `${usage.transactionCount} ${usage.transactionCount === 1 ? "transaction" : "transactions"}`,
+      );
+    }
+    if (usage.budgetCount > 0) {
+      parts.push(
+        `${usage.budgetCount} ${usage.budgetCount === 1 ? "budget" : "budgets"}`,
+      );
+    }
+    throw new Error(
+      `Cannot delete category while it is used by ${parts.join(" and ")}.`,
+    );
+  }
+
+  const { error } = await supabase
+    .from("categories")
+    .delete()
+    .eq("id", categoryId)
+    .eq("user_id", userId);
+
+  if (error) throw error;
+}
