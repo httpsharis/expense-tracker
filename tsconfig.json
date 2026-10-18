@@ -9,6 +9,12 @@
       ],
       "@features/*": [
         "./src/features/*"
+      ],
+      "@store/*": [
+        "./store/*"
+      ],
+      "@services/*": [
+        "./services/*"
       ]
     }
   },

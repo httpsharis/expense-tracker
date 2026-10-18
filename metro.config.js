@@ -15,6 +15,10 @@ module.exports = (() => {
     // Ensure 'svg' is removed from assetExts, but standard formats like 'png' remain untouched
     assetExts: resolver.assetExts.filter((ext) => ext !== 'svg'),
     sourceExts: [...resolver.sourceExts, 'svg'],
+    extraNodeModules: {
+      ...resolver.extraNodeModules,
+      'react-native-linear-gradient': require.resolve('expo-linear-gradient'),
+    },
   };
 
   return withNativeWind(config, { input: './app/global.css' });

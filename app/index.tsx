@@ -20,9 +20,5 @@ export default function Index() {
     );
   }
 
-  if (isSignedIn) {
-    return <Redirect href="/(root)/(tabs)" />;
-  }
-
-  return <Redirect href="/(auth)/SignUp" />;
+  return <Redirect href={isSignedIn ? "/(root)/(tabs)" : "/(auth)/SignIn"} />;
 }
