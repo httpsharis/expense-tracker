@@ -29,109 +29,41 @@ export function BudgetBigCard({
     daysRemaining,
     daysTotal,
     safeDailySpend,
-    timePercent,
-    pacingStatus,
     category,
     account,
   } = item;
 
-  const progressWidth = Math.min(percent, 100);
-  const progressBarColor = isExceeded
-    ? "#D4F938"
-    : percent >= 90
-    ? "#F59E0B"
-    : "#090D16";
-
-  const pacingBadge = isExceeded
-    ? {
-        label: "Exceeded",
-        bg: "bg-[#D4F938]",
-        text: "text-[#090D16]",
-        border: "border-[#C5EB27]",
-      }
-    : pacingStatus === "warning"
-    ? {
-        label: "Pacing High",
-        bg: "bg-amber-50",
-        text: "text-amber-800",
-        border: "border-amber-200",
-      }
-    : pacingStatus === "under"
-    ? {
-        label: "Under Budget",
-        bg: "bg-emerald-50",
-        text: "text-emerald-800",
-        border: "border-emerald-200",
-      }
-    : {
-        label: "On Track",
-        bg: "bg-[#F4F5F7]",
-        text: "text-[#090D16]",
-        border: "border-[#E4E7EC]",
-      };
+  const displayPercent = Math.min(percent, 100);
+  const percentLeft = Math.max(0, 100 - percent);
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`View ${name} budget details`}
-      className="bg-white rounded-3xl p-5 mb-4 border border-[#E4E7EC] shadow-[0_8px_30px_rgba(9,13,22,0.06)] relative overflow-hidden active:scale-[0.99]"
+      className="bg-surface rounded-3xl p-5 mb-4 border border-surface-border shadow-2xs overflow-hidden active:scale-[0.99]"
     >
-      {/* Top Accent Edge */}
-      <View
-        className={`absolute top-0 left-0 right-0 h-1.5 ${
-          isExceeded ? "bg-[#D4F938]" : "bg-[#090D16]"
-        }`}
-      />
-
-      {/* 1. Header Row: Scope Chip, Pacing Pill, Edit Affordance */}
-      <View className="flex-row items-center justify-between mb-4 pt-1">
+      {/* 1. TOP ROW: Accent Dot + Scope / Budget Title + Month Pill & Edit Action */}
+      <View className="flex-row items-center justify-between mb-3.5">
         <View className="flex-row items-center gap-2 flex-1 mr-2">
-          {category ? (
-            <View className="flex-row items-center gap-1.5 bg-[#F4F5F7] px-2.5 py-1 rounded-xl border border-[#E4E7EC] shadow-2xs">
-              <Text className="text-xs">{category.icon || "🏷️"}</Text>
-              <Text
-                className="text-xs font-bold text-[#090D16]"
-                numberOfLines={1}
-              >
-                {category.name}
-              </Text>
-            </View>
-          ) : account ? (
-            <View className="flex-row items-center gap-1.5 bg-[#F4F5F7] px-2.5 py-1 rounded-xl border border-[#E4E7EC] shadow-2xs">
-              <Text className="text-xs">🏦</Text>
-              <Text
-                className="text-xs font-bold text-[#090D16]"
-                numberOfLines={1}
-              >
-                {account.name}
-              </Text>
-            </View>
-          ) : (
-            <View className="flex-row items-center gap-1.5 bg-[#F4F5F7] px-2.5 py-1 rounded-xl border border-[#E4E7EC] shadow-2xs">
-              <Text className="text-xs">🌐</Text>
-              <Text className="text-xs font-bold text-[#090D16]">
-                All Spending
-              </Text>
-            </View>
-          )}
-
+          <View
+            className={`w-2.5 h-2.5 rounded-full ${
+              isExceeded ? "bg-coral" : percent >= 85 ? "bg-amber-500" : "bg-emerald-600 dark:bg-primary"
+            }`}
+          />
           <Text
             numberOfLines={1}
-            className="text-xs font-semibold text-[#64748B] flex-1"
+            className="text-xs font-black uppercase tracking-wider text-[#525866] dark:text-ink-muted"
           >
-            {name}
+            {category ? `${category.name.toUpperCase()} BUDGET` : account ? `${account.name.toUpperCase()} BUDGET` : `${name.toUpperCase()}`}
           </Text>
         </View>
 
         <View className="flex-row items-center gap-2">
-          <View
-            className={`px-2.5 py-0.5 rounded-full border ${pacingBadge.bg} ${pacingBadge.border}`}
-          >
-            <Text
-              className={`text-[10px] font-black uppercase tracking-wider ${pacingBadge.text}`}
-            >
-              {pacingBadge.label}
+          {/* Period Pill Badge */}
+          <View className="px-3.5 py-1 rounded-full bg-[#EEF2F6] dark:bg-surface-muted border border-surface-border">
+            <Text className="text-xs font-bold text-[#344054] dark:text-ink">
+              {periodLabel}
             </Text>
           </View>
 
@@ -144,122 +76,119 @@ export function BudgetBigCard({
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel="Edit budget"
-              className="w-8 h-8 rounded-full bg-[#F4F5F7] items-center justify-center active:scale-95 shadow-2xs"
+              className="w-8 h-8 rounded-full bg-[#EEF2F6] dark:bg-surface-muted border border-surface-border items-center justify-center active:scale-95"
             >
-              <Feather name="edit-2" size={13} color="#090D16" />
+              <Feather name="edit-2" size={13} color="#64748B" />
             </Pressable>
           )}
         </View>
       </View>
 
-      {/* 2. Main Tracking Hero Row */}
-      <View className="flex-row items-end justify-between mb-4">
-        <View className="flex-1 mr-2">
-          <Text className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider mb-0.5">
-            Spent so far
-          </Text>
-          <Text className="text-3xl font-black text-[#090D16] tracking-tight tabular-nums">
+      {/* 2. SPENT HERO READOUT + PERCENT LEFT PILL */}
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-baseline flex-1 mr-2 flex-wrap">
+          <Text className="text-2xl sm:text-3xl font-black text-ink tracking-tight tabular-nums">
             {formatCurrency(spent, currency, { maximumFractionDigits: 0 })}
           </Text>
-          <Text className="text-xs font-medium text-[#64748B] mt-0.5">
-            of {formatCurrency(amount, currency, { maximumFractionDigits: 0 })}{" "}
-            limit
+          <Text className="text-sm font-semibold text-[#667085] dark:text-ink-muted ml-1.5">
+            spent of {formatCurrency(amount, currency, { maximumFractionDigits: 0 })}
           </Text>
         </View>
 
-        {/* Elevated Tactile Remaining / Overspend Card */}
+        {/* Status Pill Badge: Mint if remaining, Coral if exceeded */}
         <View
-          className={`px-3.5 py-2 rounded-2xl border shadow-2xs items-end ${
+          className={`px-3 py-1 rounded-full border ${
             isExceeded
-              ? "bg-rose-50/90 border-rose-200/80"
-              : "bg-emerald-50/90 border-emerald-200/80"
+              ? "bg-[#FEF3F2] dark:bg-rose-950/40 border-rose-500/25"
+              : "bg-[#E8F7EE] dark:bg-emerald-950/40 border-emerald-500/25"
           }`}
         >
           <Text
-            className={`text-[9px] font-bold uppercase tracking-wider ${
-              isExceeded ? "text-rose-800/80" : "text-emerald-800/80"
+            className={`text-xs font-black tabular-nums ${
+              isExceeded
+                ? "text-[#B42318] dark:text-rose-400"
+                : "text-[#0D6B3A] dark:text-emerald-400"
             }`}
           >
-            {isExceeded ? "Over Budget" : "Remaining"}
+            {isExceeded ? `+${percent - 100}% over` : `${percentLeft}% left`}
           </Text>
+        </View>
+      </View>
+
+      {/* 3. SMOOTH PROGRESS BAR */}
+      <View className="h-2 w-full bg-[#EAECF0] dark:bg-surface-muted rounded-full overflow-hidden my-3.5">
+        <View
+          style={{ width: `${displayPercent}%` }}
+          className={`h-full rounded-full ${
+            isExceeded
+              ? "bg-coral"
+              : percent >= 85
+              ? "bg-amber-500"
+              : "bg-emerald-500"
+          }`}
+        />
+      </View>
+
+      {/* 4. PACING & DAYS REMAINING SUB-ROW */}
+      <View className="flex-row items-center justify-between pb-1">
+        <View className="flex-row items-center gap-1.5 flex-1 mr-2">
+          <Feather
+            name={isExceeded ? "alert-circle" : "check-circle"}
+            size={14}
+            color={isExceeded ? "#EF4444" : "#0D6B3A"}
+          />
           <Text
-            className={`text-lg font-black tracking-tight tabular-nums ${
-              isExceeded ? "text-[#E11D48]" : "text-[#059669]"
+            numberOfLines={1}
+            className={`text-xs font-bold ${
+              isExceeded
+                ? "text-coral"
+                : "text-[#0D6B3A] dark:text-emerald-400"
             }`}
           >
             {isExceeded
-              ? `+${formatCurrency(spent - amount, currency, { maximumFractionDigits: 0 })}`
-              : formatCurrency(remaining, currency, {
-                  maximumFractionDigits: 0,
-                })}
-          </Text>
-          <Text
-            className={`text-[10px] font-bold ${
-              isExceeded ? "text-rose-700" : "text-emerald-700"
-            }`}
-          >
-            {percent}% used
+              ? `Exceeded limit by ${formatCurrency(spent - amount, currency, { maximumFractionDigits: 0 })}`
+              : `${percent}% spent · ${formatCurrency(safeDailySpend, currency, { maximumFractionDigits: 0 })}/day safe pace`}
           </Text>
         </View>
+
+        <Text className="text-xs font-semibold text-[#667085] dark:text-ink-muted tabular-nums">
+          {daysRemaining} {daysRemaining === 1 ? "day remains" : "days remain"}
+        </Text>
       </View>
 
-      {/* 3. Visual Tracking Progress Bar with Timeline Comparison */}
-      <View className="mb-4">
-        {/* Recessed Progress Track */}
-        <View className="h-2.5 w-full bg-[#F0F2F6] rounded-full overflow-hidden border border-[#E2E5EA]/70 relative">
-          <View
-            style={{
-              width: `${progressWidth}%`,
-              backgroundColor: progressBarColor,
-            }}
-            className="h-full rounded-full"
-          />
-        </View>
-
-        {/* Timeline Marker Indicator */}
-        <View className="flex-row justify-between items-center mt-1.5 px-0.5">
-          <Text className="text-[10px] font-medium text-[#64748B]">
-            {periodLabel} ({timePercent}% of period passed)
-          </Text>
-          <Text className="text-[10px] font-bold text-[#090D16]">
-            {daysRemaining} {daysRemaining === 1 ? "day" : "days"} left
-          </Text>
-        </View>
-      </View>
-
-      {/* 4. Tracking Metrics Elevated 3-Tile Dashboard */}
-      <View className="flex-row items-center gap-2.5 pt-3 mt-1 border-t border-[#F4F5F7]">
+      {/* 5. 3-TILE METRICS DASHBOARD DECK */}
+      <View className="flex-row items-center gap-2.5 mt-3.5 pt-3.5 border-t border-surface-divider">
         {/* Tile 1: Days Left */}
-        <View className="flex-1 bg-[#F8F9FB] rounded-2xl p-2.5 border border-[#E4E7EC]/70 shadow-2xs">
-          <View className="flex-row items-center gap-1 mb-0.5">
-            <Feather name="clock" size={10} color="#64748B" />
-            <Text className="text-[9px] font-bold text-[#64748B] uppercase">
+        <View className="flex-1 bg-[#F8FAFC] dark:bg-surface-muted rounded-2xl p-3 border border-surface-border">
+          <View className="flex-row items-center gap-1 mb-1">
+            <Feather name="clock" size={11} color="#64748B" />
+            <Text className="text-[10px] font-bold text-[#64748B] dark:text-ink-muted uppercase">
               Days Left
             </Text>
           </View>
-          <Text className="text-sm font-black text-[#090D16] tabular-nums">
+          <Text className="text-sm font-black text-ink tabular-nums">
             {daysRemaining}d{" "}
-            <Text className="text-[10px] font-semibold text-[#94A3B8]">
+            <Text className="text-[10px] font-semibold text-[#94A3B8] dark:text-ink-whisper">
               / {daysTotal}d
             </Text>
           </Text>
         </View>
 
         {/* Tile 2: Safe Daily Allowance */}
-        <View className="flex-1 bg-[#F8F9FB] rounded-2xl p-2.5 border border-[#E4E7EC]/70 shadow-2xs">
-          <View className="flex-row items-center gap-1 mb-0.5">
+        <View className="flex-1 bg-[#F8FAFC] dark:bg-surface-muted rounded-2xl p-3 border border-surface-border">
+          <View className="flex-row items-center gap-1 mb-1">
             <Feather
               name="zap"
-              size={10}
-              color={isExceeded ? "#E11D48" : "#059669"}
+              size={11}
+              color={isExceeded ? "#EF4444" : "#0D6B3A"}
             />
-            <Text className="text-[9px] font-bold text-[#64748B] uppercase">
+            <Text className="text-[10px] font-bold text-[#64748B] dark:text-ink-muted uppercase">
               Daily Pace
             </Text>
           </View>
           <Text
             className={`text-sm font-black tabular-nums ${
-              isExceeded ? "text-[#E11D48]" : "text-[#090D16]"
+              isExceeded ? "text-coral" : "text-ink"
             }`}
           >
             {isExceeded
@@ -269,16 +198,16 @@ export function BudgetBigCard({
         </View>
 
         {/* Tile 3: Activity Entries */}
-        <View className="flex-1 bg-[#F8F9FB] rounded-2xl p-2.5 border border-[#E4E7EC]/70 shadow-2xs">
-          <View className="flex-row items-center gap-1 mb-0.5">
-            <Feather name="activity" size={10} color="#64748B" />
-            <Text className="text-[9px] font-bold text-[#64748B] uppercase">
+        <View className="flex-1 bg-[#F8FAFC] dark:bg-surface-muted rounded-2xl p-3 border border-surface-border">
+          <View className="flex-row items-center gap-1 mb-1">
+            <Feather name="activity" size={11} color="#64748B" />
+            <Text className="text-[10px] font-bold text-[#64748B] dark:text-ink-muted uppercase">
               Activity
             </Text>
           </View>
-          <Text className="text-sm font-black text-[#090D16] tabular-nums">
+          <Text className="text-sm font-black text-ink tabular-nums">
             {matchingTransactionCount}{" "}
-            <Text className="text-[10px] font-semibold text-[#94A3B8]">
+            <Text className="text-[10px] font-semibold text-[#94A3B8] dark:text-ink-whisper">
               {matchingTransactionCount === 1 ? "entry" : "entries"}
             </Text>
           </Text>

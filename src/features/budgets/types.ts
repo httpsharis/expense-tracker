@@ -59,9 +59,6 @@ export interface BudgetCardProps {
   onEdit?: () => void;
 }
 
-export type BudgetCategoryCardProps = BudgetCardProps;
-
-
 export interface BudgetFormModalProps {
   visible: boolean;
   mode: "create" | "edit";
@@ -73,74 +70,4 @@ export interface BudgetFormModalProps {
   onSave: (payload: SaveBudgetPayload) => Promise<void>;
   onDelete?: (budgetId: string) => Promise<void>;
   isSaving: boolean;
-  budgetId?: string;
-  initialCategoryId?: string;
-  initialAmount?: number;
-  initialType?: any;
-  initialConfig?: any;
-  monthDate?: string;
-  recentTransactions?: any[];
 }
-
-export interface BudgetMetrics {
-  totalExpenseBudget: number;
-  totalExpenseSpent: number;
-  remainingExpenseBudget: number;
-  overallExpensePercent: number;
-  isOverallWarning: boolean;
-  isOverallExceeded: boolean;
-  expenseCount: number;
-  totalSavingsTarget: number;
-  totalSavingsSaved: number;
-  savingsPercent: number;
-  savingsCount: number;
-  safeDailySpend: number;
-  daysRemaining: number;
-  totalCount: number;
-}
-
-export interface ActiveCategoryBudget extends BudgetWithDerived {
-  budgetId: string;
-  categoryId: string;
-  icon?: string | null;
-  type?: any;
-  cap: number;
-  overspend?: number;
-  isWarning?: boolean;
-  isAchieved?: boolean;
-  color?: string;
-  period?: BudgetPeriod;
-  accountId?: string | "all";
-  transactionFilter?: any;
-  inclusionMode?: any;
-  selectedTransactionIds?: string[];
-  description?: string;
-}
-
-export interface UnbudgetedCategory {
-  id: string;
-  name: string;
-  icon: string | null;
-  spent: number;
-}
-
-export interface BudgetHeroCardProps {
-  metrics: BudgetMetrics;
-  currency?: string;
-  activeFilter: "all" | "expense" | "savings";
-  onSelectFilter: (filter: "all" | "expense" | "savings") => void;
-}
-
-export interface BudgetPeriodHeaderProps {
-  activeDate: Date;
-  daysRemaining: number;
-  onAddBudget: () => void;
-}
-
-export interface UnbudgetedLeakageCardProps {
-  unbudgetedList: UnbudgetedCategory[];
-  currency?: string;
-  onCapCategory: (categoryId: string) => void;
-}
-
-

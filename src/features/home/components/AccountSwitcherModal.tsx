@@ -28,24 +28,24 @@ export function AccountSwitcherModal({
       <Pressable onPress={onClose} className="flex-1 bg-black/40 justify-end">
         <Pressable
           onPress={(e) => e.stopPropagation()}
-          className="bg-white rounded-t-3xl p-6 pb-10 max-h-[80%]"
+          className="bg-surface dark:bg-surface-dark rounded-t-[32px] p-6 pb-10 max-h-[80%] border-t border-surface-border dark:border-surface-border-dark"
         >
           {/* Header */}
-          <View className="flex-row items-center justify-between pb-4 border-b border-gray-100">
+          <View className="flex-row items-center justify-between pb-4 border-b border-surface-divider dark:border-surface-divider-dark">
             <View>
-              <Text className="text-base font-extrabold text-[#0F172A]">
+              <Text className="text-base font-extrabold text-ink dark:text-ink-light">
                 Select Active Account
               </Text>
-              <Text className="text-xs text-[#94A3B8] mt-0.5">
+              <Text className="text-xs text-ink-muted dark:text-ink-muted-dark mt-0.5">
                 Filter your dashboard and transactions
               </Text>
             </View>
             <Pressable
               onPress={onClose}
               hitSlop={8}
-              className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center active:opacity-70"
+              className="w-8 h-8 rounded-full bg-surface-muted dark:bg-surface-muted-dark border border-surface-border dark:border-surface-border-dark items-center justify-center active:opacity-70"
             >
-              <Feather name="x" size={16} color="#64748B" />
+              <Feather name="x" size={16} color="#6B6B6E" />
             </Pressable>
           </View>
 
@@ -59,25 +59,25 @@ export function AccountSwitcherModal({
                 }}
                 className={`flex-row items-center justify-between p-4 rounded-2xl border ${
                   selectedAccountId === null
-                    ? "border-[#D4F938] bg-[#D4F938]/15"
-                    : "border-gray-100 bg-[#F8F9FB]"
+                    ? "border-primary bg-primary/10 dark:border-primary dark:bg-primary/15"
+                    : "border-surface-border bg-surface-muted dark:border-surface-border-dark dark:bg-surface-muted-dark"
                 } active:scale-[0.99]`}
               >
                 <View className="flex-row items-center gap-3">
-                  <View className="w-10 h-10 rounded-xl bg-white items-center justify-center shadow-xs">
-                    <Feather name="layers" size={18} color="#0F172A" />
+                  <View className="w-10 h-10 rounded-xl bg-surface dark:bg-surface-dark border border-surface-border dark:border-surface-border-dark items-center justify-center shadow-xs">
+                    <Feather name="layers" size={18} color="#22C55E" />
                   </View>
                   <View>
-                    <Text className="text-sm font-bold text-[#0F172A]">
+                    <Text className="text-sm font-bold text-ink dark:text-ink-light">
                       All Accounts Combined
                     </Text>
-                    <Text className="text-xs text-[#64748B]">
+                    <Text className="text-xs text-ink-muted dark:text-ink-muted-dark">
                       Total Liquid Portfolio
                     </Text>
                   </View>
                 </View>
 
-                <Text className="text-sm font-black text-[#0F172A] tabular-nums">
+                <Text className="text-sm font-black text-ink dark:text-ink-light tabular-nums">
                   {formatCurrency(totalBalance, baseCurrency)}
                 </Text>
               </Pressable>
@@ -94,12 +94,12 @@ export function AccountSwitcherModal({
                     }}
                     className={`flex-row items-center justify-between p-4 rounded-2xl border ${
                       isSelected
-                        ? "border-[#D4F938] bg-[#D4F938]/15"
-                        : "border-gray-100 bg-[#F8F9FB]"
+                        ? "border-primary bg-primary/10 dark:border-primary dark:bg-primary/15"
+                        : "border-surface-border bg-surface-muted dark:border-surface-border-dark dark:bg-surface-muted-dark"
                     } active:scale-[0.99]`}
                   >
                     <View className="flex-row items-center gap-3">
-                      <View className="w-10 h-10 rounded-xl bg-white items-center justify-center shadow-xs">
+                      <View className="w-10 h-10 rounded-xl bg-surface dark:bg-surface-dark border border-surface-border dark:border-surface-border-dark items-center justify-center shadow-xs">
                         <Ionicons
                           name={
                             acc.type === "cash"
@@ -109,20 +109,20 @@ export function AccountSwitcherModal({
                                 : "card-outline"
                           }
                           size={19}
-                          color="#0F172A"
+                          color={isSelected ? "#22C55E" : "#6B6B6E"}
                         />
                       </View>
                       <View>
-                        <Text className="text-sm font-bold text-[#0F172A]">
+                        <Text className="text-sm font-bold text-ink dark:text-ink-light">
                           {acc.name}
                         </Text>
-                        <Text className="text-xs text-[#64748B] capitalize">
+                        <Text className="text-xs text-ink-muted dark:text-ink-muted-dark capitalize">
                           {acc.type} • {acc.currency}
                         </Text>
                       </View>
                     </View>
 
-                    <Text className="text-sm font-black text-[#0F172A] tabular-nums">
+                    <Text className="text-sm font-black text-ink dark:text-ink-light tabular-nums">
                       {formatCurrency(acc.balance, acc.currency)}
                     </Text>
                   </Pressable>
@@ -133,9 +133,9 @@ export function AccountSwitcherModal({
               <Pressable
                 onPress={() => {
                   onClose();
-                  router.push("/(root)/Accounts" as any);
+                  router.push("/(root)/(tabs)/Accounts");
                 }}
-                className="flex-row items-center justify-center gap-2 p-3.5 mt-2 rounded-2xl bg-[#0F172A] active:opacity-85"
+                className="flex-row items-center justify-center gap-2 p-3.5 mt-2 rounded-2xl bg-primary active:opacity-85"
               >
                 <Feather name="external-link" size={15} color="#FFFFFF" />
                 <Text className="text-xs font-bold text-white">

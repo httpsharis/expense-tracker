@@ -7,7 +7,6 @@ import { useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
     ActivityIndicator,
-    Alert,
     Pressable,
     Text,
     TextInput,
@@ -27,6 +26,7 @@ import { useGoogleAuth } from "@shared/lib/useGoogleAuth";
 import { Button } from "@shared/ui/Button";
 import { SaldoLogo } from "@shared/ui/Logo";
 import { TextField } from "@shared/ui/TextField";
+import { usePrompt } from "@store/promptStore";
 
 export default function SignUp() {
   const { signUp } = useSignUp();
@@ -40,6 +40,7 @@ export default function SignUp() {
 
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
+  const { alert } = usePrompt();
 
   const {
     control,
@@ -64,10 +65,11 @@ export default function SignUp() {
   });
 
   const rawCode = watchCode("code") || "";
-  const logoColor = isDark ? "#E4E4E7" : "#18181B";
+  const submittingRef = useRef(false);
 
   const onSignUpSubmit = async (data: SignUpSchema) => {
-    if (!signUp) return;
+    if (!signUp || submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
 
     try {
@@ -82,48 +84,71 @@ export default function SignUp() {
       setPendingVerification(true);
     } catch (err: unknown) {
       const message = getErrorMessage(err);
-      Alert.alert("Sign Up Failed", message);
+      await alert({
+        title: "Sign Up Failed",
+        message,
+        variant: "danger",
+      });
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
   const onVerifySubmit = async ({ code }: { code: string }) => {
-    if (!signUp) return;
+    if (!signUp || submittingRef.current) return;
+    const sanitizedCode = code.trim();
+    if (sanitizedCode.length < 6) {
+      await alert({
+        title: "Verification Code",
+        message: "Please enter the 6-digit verification code.",
+        variant: "warning",
+      });
+      return;
+    }
+
+    submittingRef.current = true;
     setSubmitting(true);
 
     try {
-      const { error } = await signUp.verifications.verifyEmailCode({ code });
+      const { error } = await signUp.verifications.verifyEmailCode({
+        code: sanitizedCode,
+      });
 
       if (error) {
-        Alert.alert(
-          "Verification failed",
-          error.message || "Invalid Verification Code.",
-        );
-        setSubmitting(false);
+        await alert({
+          title: "Verification Failed",
+          message: error.message || "Invalid Verification Code.",
+          variant: "danger",
+        });
         return;
       }
 
       if (signUp.status === "complete" && signUp.createdSessionId) {
         await setActive({ session: signUp.createdSessionId });
-        setSubmitting(false);
         router.replace("/(root)/(tabs)");
       } else {
-        setSubmitting(false);
-        Alert.alert("Verification Complete", "Please check your code");
+        await alert({
+          title: "Verification Pending",
+          message: "Please check your code and try again.",
+          variant: "warning",
+        });
       }
     } catch (err: unknown) {
-      setSubmitting(false);
       const message = getErrorMessage(err);
-      Alert.alert("Verification Failed", message);
+      await alert({
+        title: "Verification Failed",
+        message,
+        variant: "danger",
+      });
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
     }
   };
 
   return (
-    <SafeAreaView
-      className="flex-1 bg-[#F8F8F6] dark:bg-[#121316]"
-      edges={["top", "bottom"]}
-    >
+    <SafeAreaView className="flex-1 bg-canvas" edges={["top", "bottom"]}>
       <KeyboardAwareScrollView
         contentContainerStyle={{
           flexGrow: 1,
@@ -147,23 +172,23 @@ export default function SignUp() {
               <Ionicons
                 name="chevron-back"
                 size={18}
-                color={isDark ? "#A1A1AA" : "#71717A"}
+                color="#71717A"
               />
-              <Text className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              <Text className="text-sm font-semibold text-ink-muted">
                 Edit details
               </Text>
             </TouchableOpacity>
           )}
 
           {/* Top Brand Logo */}
-          <SaldoLogo size={64} color={logoColor} className="mb-5" />
+          <SaldoLogo size={60} color="#22C55E" className="mb-4" />
 
           {/* Headers */}
-          <Text className="text-2xl font-semibold text-center text-zinc-900 dark:text-zinc-100 tracking-tight">
+          <Text className="text-2xl font-black text-center text-ink tracking-tight">
             {pendingVerification ? "Enter verification code" : "Create account"}
           </Text>
 
-          <Text className="text-sm text-center text-zinc-500 dark:text-zinc-400 mt-1.5 mb-7">
+          <Text className="text-sm font-medium text-center text-ink-muted mt-1.5 mb-7">
             {pendingVerification
               ? `We sent a 6-digit code to ${getValues("email") || "your email"}`
               : "Start tracking your monthly ledger"}
@@ -239,7 +264,7 @@ export default function SignUp() {
                 formErrors.lastName ||
                 formErrors.email ||
                 formErrors.password) && (
-                <Text className="text-xs text-rose-500 dark:text-rose-400 font-medium text-left px-1 mt-0.5">
+                <Text className="text-xs text-coral font-semibold text-left px-1 mt-0.5">
                   {formErrors.firstName?.message ||
                     formErrors.lastName?.message ||
                     formErrors.email?.message ||
@@ -257,11 +282,11 @@ export default function SignUp() {
 
               {/* Monochromatic Divider */}
               <View className="flex-row items-center w-full my-3">
-                <View className="flex-1 h-[1px] bg-zinc-200/90 dark:bg-zinc-800/80" />
-                <Text className="mx-3 text-[11px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-medium">
+                <View className="flex-1 h-[1px] bg-surface-border" />
+                <Text className="mx-3 text-[11px] uppercase tracking-wider text-ink-whisper font-bold">
                   or
                 </Text>
-                <View className="flex-1 h-[1px] bg-zinc-200/90 dark:bg-zinc-800/80" />
+                <View className="flex-1 h-[1px] bg-surface-border" />
               </View>
 
               {/* Google OAuth Action Button */}
@@ -269,17 +294,17 @@ export default function SignUp() {
                 activeOpacity={0.8}
                 onPress={signInWithGoogle}
                 disabled={isGoogleAuth || submitting}
-                className="w-full h-12 rounded-[10px] flex-row items-center justify-center gap-3 border border-zinc-200/90 dark:border-zinc-800/80 bg-white dark:bg-[#1A1B1E] active:opacity-70"
+                className="w-full h-14 rounded-2xl flex-row items-center justify-center gap-3 border border-surface-border bg-surface active:scale-98 shadow-2xs"
               >
                 {isGoogleAuth ? (
                   <ActivityIndicator
                     size="small"
-                    color={isDark ? "#E4E4E7" : "#18181B"}
+                    color={isDark ? "#FFFFFF" : "#0A0A0B"}
                   />
                 ) : (
                   <>
                     <AntDesign name="google" size={18} color="#EA4335" />
-                    <Text className="text-[15px] font-medium text-zinc-800 dark:text-zinc-200">
+                    <Text className="text-[15px] font-bold text-ink">
                       Sign up with Google
                     </Text>
                   </>
@@ -328,13 +353,13 @@ export default function SignUp() {
                   return (
                     <View
                       key={index}
-                      className={`w-12 h-14 rounded-[10px] items-center justify-center border bg-white dark:bg-[#1A1B1E] ${
+                      className={`w-12 h-14 rounded-2xl items-center justify-center border bg-surface ${
                         isCurrent
-                          ? "border-zinc-800 dark:border-zinc-300"
-                          : "border-zinc-200/90 dark:border-zinc-800/80"
+                          ? "border-primary"
+                          : "border-surface-border"
                       }`}
                     >
-                      <Text className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+                      <Text className="text-xl font-black text-ink">
                         {digit}
                       </Text>
                     </View>
@@ -343,7 +368,7 @@ export default function SignUp() {
               </Pressable>
 
               {codeErrors.code && (
-                <Text className="text-xs text-rose-500 dark:text-rose-400 font-medium text-center px-1">
+                <Text className="text-xs text-coral font-semibold text-center px-1">
                   {codeErrors.code.message}
                 </Text>
               )}
@@ -365,9 +390,9 @@ export default function SignUp() {
               className="mt-6"
               onPress={() => router.replace("/(auth)/SignIn")}
             >
-              <Text className="text-sm text-zinc-500 dark:text-zinc-400">
+              <Text className="text-sm font-medium text-ink-muted">
                 Already have an account?{" "}
-                <Text className="font-semibold text-zinc-800 dark:text-zinc-200 underline">
+                <Text className="font-bold text-ink underline">
                   Log in
                 </Text>
               </Text>
@@ -375,7 +400,7 @@ export default function SignUp() {
           )}
 
           {/* Micro Legal Copy */}
-          <Text className="text-[11px] text-center text-zinc-400 dark:text-zinc-500 mt-6 px-4">
+          <Text className="text-[11px] text-center text-ink-whisper mt-6 px-4">
             By continuing, you agree to Saldo's Terms of Service and Privacy
             Policy.
           </Text>

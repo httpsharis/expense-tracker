@@ -37,7 +37,6 @@ export default function SignIn() {
 
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === "dark";
-  const logoColor = isDark ? "#E4E4E7" : "#18181B";
 
   const {
     control,
@@ -83,9 +82,23 @@ export default function SignIn() {
           message: "Please complete account verification to sign in.",
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setSubmitting(false);
-      const clerkErr = err?.errors?.[0];
+      const clerkErr =
+        typeof err === "object" &&
+        err !== null &&
+        "errors" in err &&
+        Array.isArray((err as { errors?: unknown[] }).errors)
+          ? (
+              err as {
+                errors: Array<{
+                  code?: string;
+                  longMessage?: string;
+                  message?: string;
+                }>;
+              }
+            ).errors[0]
+          : undefined;
       const code = clerkErr?.code;
 
       if (
@@ -119,10 +132,7 @@ export default function SignIn() {
   };
 
   return (
-    <SafeAreaView
-      className="flex-1 bg-[#F8F8F6] dark:bg-[#121316]"
-      edges={["top", "bottom"]}
-    >
+    <SafeAreaView className="flex-1 bg-canvas" edges={["top", "bottom"]}>
       <KeyboardAwareScrollView
         contentContainerStyle={{
           flexGrow: 1,
@@ -136,31 +146,31 @@ export default function SignIn() {
         showsVerticalScrollIndicator={false}
       >
         <View className="w-full max-w-sm items-center">
-          <SaldoLogo size={64} color={logoColor} className="mb-5" />
+          <SaldoLogo size={60} color="#22C55E" className="mb-4" />
 
-          <Text className="text-2xl font-semibold text-center text-zinc-900 dark:text-zinc-100 tracking-tight">
+          <Text className="text-2xl font-black text-center text-ink tracking-tight">
             Welcome back
           </Text>
 
-          <Text className="text-sm text-center text-zinc-500 dark:text-zinc-400 mt-1.5 mb-7">
+          <Text className="text-sm font-medium text-center text-ink-muted mt-1.5 mb-7">
             Enter your credentials to access your ledger
           </Text>
 
           <View className="w-full gap-3">
             {/* Inline Visual Error Banner */}
             {authError && (
-              <View className="w-full p-3.5 rounded-[12px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 flex-row items-start gap-3 mb-1">
+              <View className="w-full p-4 rounded-2xl bg-coral/10 border border-coral/30 flex-row items-start gap-3 mb-1">
                 <Ionicons
                   name="alert-circle-outline"
                   size={20}
-                  color={isDark ? "#FB7185" : "#E11D48"}
+                  color="#EF4444"
                   style={{ marginTop: 1 }}
                 />
                 <View className="flex-1">
-                  <Text className="text-xs font-semibold text-rose-800 dark:text-rose-200">
+                  <Text className="text-xs font-bold text-coral">
                     {authError.title}
                   </Text>
-                  <Text className="text-xs text-rose-700 dark:text-rose-300 mt-0.5 leading-relaxed">
+                  <Text className="text-xs text-coral mt-0.5 leading-relaxed">
                     {authError.message}
                   </Text>
 
@@ -169,7 +179,7 @@ export default function SignIn() {
                       onPress={() => router.replace("/(auth)/SignUp")}
                       className="mt-2"
                     >
-                      <Text className="text-xs font-semibold text-rose-900 dark:text-rose-100 underline">
+                      <Text className="text-xs font-bold text-coral underline">
                         Register this email address →
                       </Text>
                     </TouchableOpacity>
@@ -214,7 +224,7 @@ export default function SignIn() {
             />
 
             {(errors.email || errors.password) && (
-              <Text className="text-xs text-rose-500 dark:text-rose-400 font-medium text-left px-1 mt-0.5">
+              <Text className="text-xs text-coral font-semibold text-left px-1 mt-0.5">
                 {errors.email?.message || errors.password?.message}
               </Text>
             )}
@@ -228,28 +238,28 @@ export default function SignIn() {
             />
 
             <View className="flex-row items-center w-full my-3">
-              <View className="flex-1 h-[1px] bg-zinc-200/90 dark:bg-zinc-800/80" />
-              <Text className="mx-3 text-[11px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-medium">
+              <View className="flex-1 h-[1px] bg-surface-border" />
+              <Text className="mx-3 text-[11px] uppercase tracking-wider text-ink-whisper font-bold">
                 or
               </Text>
-              <View className="flex-1 h-[1px] bg-zinc-200/90 dark:bg-zinc-800/80" />
+              <View className="flex-1 h-[1px] bg-surface-border" />
             </View>
 
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={signInWithGoogle}
               disabled={isGoogleAuth || submitting}
-              className="w-full h-12 rounded-[10px] flex-row items-center justify-center gap-3 border border-zinc-200/90 dark:border-zinc-800/80 bg-white dark:bg-[#1A1B1E] active:opacity-70"
+              className="w-full h-14 rounded-2xl flex-row items-center justify-center gap-3 border border-surface-border bg-surface active:scale-98 shadow-2xs"
             >
               {isGoogleAuth ? (
                 <ActivityIndicator
                   size="small"
-                  color={isDark ? "#E4E4E7" : "#18181B"}
+                  color={isDark ? "#FFFFFF" : "#0A0A0B"}
                 />
               ) : (
                 <>
                   <AntDesign name="google" size={18} color="#EA4335" />
-                  <Text className="text-[15px] font-medium text-zinc-800 dark:text-zinc-200">
+                  <Text className="text-[15px] font-bold text-ink">
                     Sign in with Google
                   </Text>
                 </>
@@ -262,15 +272,15 @@ export default function SignIn() {
             className="mt-6"
             onPress={() => router.replace("/(auth)/SignUp")}
           >
-            <Text className="text-sm text-zinc-500 dark:text-zinc-400">
+            <Text className="text-sm font-medium text-ink-muted">
               Don't have an account?{" "}
-              <Text className="font-semibold text-zinc-800 dark:text-zinc-200 underline">
+              <Text className="font-bold text-ink underline">
                 Sign up
               </Text>
             </Text>
           </TouchableOpacity>
 
-          <Text className="text-[11px] text-center text-zinc-400 dark:text-zinc-500 mt-6 px-4">
+          <Text className="text-[11px] text-center text-ink-whisper mt-6 px-4">
             By continuing, you agree to Saldo's Terms of Service and Privacy
             Policy.
           </Text>

@@ -17,8 +17,11 @@ export function useSupabase() {
 
       try {
         return await getToken();
-      } catch (err) {
-        console.error("[useSupabase] Failed to retrieve Clerk token:", err);
+      } catch (err: unknown) {
+        console.error(
+          "[useSupabase] Failed to retrieve Clerk token:",
+          err instanceof Error ? err.message : "token retrieval error",
+        );
         return null;
       }
     });

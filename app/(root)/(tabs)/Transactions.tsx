@@ -1,7 +1,7 @@
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -16,120 +16,134 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
   DetailedTransactionItem,
+  ReceiptScannerModal,
   TransactionDetailModal,
   TransactionRowItem,
-} from "@features/home";
+} from "@features/transactions";
+import { DEFAULT_CATEGORIES } from "@services/categories";
+import { CategoryIcon } from "@shared/components/CategoryIcon";
 import { formatCurrency } from "@shared/lib/currency";
+import { fromMinorUnits, toMinorUnits } from "@shared/lib/money";
+import { mapTransactionToDetailedItem } from "@shared/lib/transactionMapper";
+import { CORAL, EMERALD, PRIMARY } from "@shared/theme/tokens";
+import { ErrorState } from "@shared/ui/ErrorState";
 import {
   useAccountsWithBalancesQuery,
   useCategoriesQuery,
-  useDeleteTransactionMutation,
+  useReverseTransactionMutation,
   useTransactionsQuery,
 } from "@store/hooks";
 import { usePrompt } from "@store/promptStore";
 import { useUserStore } from "@store/userStore";
 
 type FilterType = "all" | "expense" | "income" | "transfer";
+type DateRangeFilter = "all" | "this_month" | "last_month" | "last_7_days";
+
+type ListItem =
+  | { type: "header"; title: string; count: number }
+  | { type: "item"; transaction: DetailedTransactionItem };
 
 export default function TransactionsScreen() {
   const router = useRouter();
-  const storeCurrency = useUserStore((state) => state.currency);
+  const storeCurrency = useUserStore((state) => state.currency) || "PKR";
   const { confirm, alert } = usePrompt();
 
   // Filters & Search
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const selectedAccountId = useUserStore((state) => state.activeFilterAccountId);
+  const setSelectedAccountId = useUserStore((state) => state.setActiveFilterAccountId);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<DateRangeFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [selectedTx, setSelectedTx] = useState<DetailedTransactionItem | null>(null);
+  const [scannerModalOpen, setScannerModalOpen] = useState(false);
 
-  // Queries & Mutations
-  const { data: accounts = [] } = useAccountsWithBalancesQuery();
-  const { data: categories = [] } = useCategoriesQuery();
+  // Data Queries
+  const {
+    data: accounts = [],
+    isError: isAccountsError,
+    error: accountsError,
+    refetch: refetchAccounts,
+  } = useAccountsWithBalancesQuery();
+  const { data: rawCategories = [] } = useCategoriesQuery();
   const {
     data: liveTransactions = [],
     isLoading,
+    isError: isTxError,
+    error: txError,
     refetch,
-  } = useTransactionsQuery();
-  const deleteTxMutation = useDeleteTransactionMutation();
+  } = useTransactionsQuery({ limit: 300 });
+  const reverseTxMutation = useReverseTransactionMutation();
+
+  const categories = useMemo(() => {
+    if (rawCategories.length > 0) return rawCategories;
+    return DEFAULT_CATEGORIES.map((cat, idx) => ({
+      id: `default-${idx + 1}`,
+      name: cat.name,
+      icon: cat.icon,
+      is_default: true,
+      user_id: "",
+      created_at: "",
+      updated_at: "",
+    }));
+  }, [rawCategories]);
+
+  const isError = isTxError || isAccountsError;
+  const error = txError ?? accountsError;
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
     setRefreshing(true);
-    await refetch();
+    await Promise.all([refetch(), refetchAccounts()]);
     setRefreshing(false);
   };
 
   // Resolve transactions into unified DTOs
   const detailedTransactions: DetailedTransactionItem[] = useMemo(() => {
     if (!liveTransactions || liveTransactions.length === 0) return [];
-
     const today = new Date();
-    const todayStr = today.toDateString();
-    const yesterdayStr = new Date(today.getTime() - 86400000).toDateString();
-
-    const categoryMap = new Map(categories.map((c) => [c.id, c]));
+    const categoryMap = new Map(
+      categories.map((c) => [c.id, { name: c.name, icon: c.icon }]),
+    );
     const accountMap = new Map(accounts.map((a) => [a.id, a.name]));
 
-    return liveTransactions.map((tx) => {
-      const dateObj = new Date(tx.date);
-      const txDateStr = dateObj.toDateString();
-      const isToday = txDateStr === todayStr;
-      const isYesterday = txDateStr === yesterdayStr;
-
-      const dateStr = isToday
-        ? "Today"
-        : isYesterday
-          ? "Yesterday"
-          : dateObj.toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            });
-
-      const cat = tx.category_id ? categoryMap.get(tx.category_id) : null;
-      const catName =
-        tx.category?.name ||
-        cat?.name ||
-        (tx.type === "income" ? "Income" : "General");
-      const catIcon =
-        tx.category?.icon || cat?.icon || (tx.type === "income" ? "💰" : "🏷️");
-      const accName =
-        (tx.account as any)?.name ||
-        (tx.account_id ? accountMap.get(tx.account_id) : null) ||
-        "Cash";
-
-      return {
-        id: tx.id,
-        name: tx.description || catName,
-        note:
-          tx.description && tx.description !== catName ? tx.description : null,
-        time: dateObj.toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        dateStr,
-        amount:
-          tx.type === "income"
-            ? Math.abs(Number(tx.amount))
-            : -Math.abs(Number(tx.amount)),
-        type: tx.type as DetailedTransactionItem["type"],
-        categoryName: catName,
-        categoryIcon: catIcon,
-        accountName: accName,
-        currency: (tx.account as any)?.currency || storeCurrency || "PKR",
-        inputMethod:
-          (tx.input_method as DetailedTransactionItem["inputMethod"]) ||
-          "manual",
-        avatarBg:
-          tx.type === "income"
-            ? "#0F766E"
-            : tx.type === "transfer"
-              ? "#000000"
-              : "#2563EB",
-      };
-    });
+    return liveTransactions.map((tx) =>
+      mapTransactionToDetailedItem(
+        tx,
+        categoryMap,
+        accountMap,
+        "Cash",
+        storeCurrency,
+        today,
+        true,
+      ),
+    );
   }, [liveTransactions, categories, accounts, storeCurrency]);
+
+  // Date Range Bounds
+  const dateBounds = useMemo(() => {
+    const now = new Date();
+    if (dateRange === "this_month") {
+      return {
+        start: new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+        end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).getTime(),
+      };
+    }
+    if (dateRange === "last_month") {
+      return {
+        start: new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime(),
+        end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).getTime(),
+      };
+    }
+    if (dateRange === "last_7_days") {
+      return {
+        start: now.getTime() - 7 * 86_400_000,
+        end: now.getTime(),
+      };
+    }
+    return null;
+  }, [dateRange]);
 
   // Apply Multi-Filter & Search Pipeline
   const filteredTransactions = useMemo(() => {
@@ -143,7 +157,22 @@ export default function TransactionsScreen() {
         if (rawTx && rawTx.account_id !== selectedAccountId) return false;
       }
 
-      // 3. Search query
+      // 3. Category filter
+      if (selectedCategoryId) {
+        const rawTx = liveTransactions.find((t) => t.id === item.id);
+        if (rawTx && rawTx.category_id !== selectedCategoryId) return false;
+      }
+
+      // 4. Date Range filter
+      if (dateBounds) {
+        const rawTx = liveTransactions.find((t) => t.id === item.id);
+        if (rawTx) {
+          const txTime = new Date(rawTx.date).getTime();
+          if (txTime < dateBounds.start || txTime > dateBounds.end) return false;
+        }
+      }
+
+      // 5. Search query
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchName = item.name.toLowerCase().includes(query);
@@ -155,76 +184,144 @@ export default function TransactionsScreen() {
 
       return true;
     });
-  }, [detailedTransactions, liveTransactions, activeFilter, selectedAccountId, searchQuery]);
+  }, [
+    detailedTransactions,
+    liveTransactions,
+    activeFilter,
+    selectedAccountId,
+    selectedCategoryId,
+    dateBounds,
+    searchQuery,
+  ]);
+
+  const activeCurrency = useMemo(() => {
+    if (selectedAccountId) {
+      return (
+        accounts.find((acc) => acc.id === selectedAccountId)?.currency ||
+        storeCurrency
+      );
+    }
+    return storeCurrency;
+  }, [selectedAccountId, accounts, storeCurrency]);
 
   // Aggregate Metrics for Active Selection
-  const { totalInflow, totalOutflow, netCashflow } = useMemo(() => {
-    let inflow = 0;
-    let outflow = 0;
+  const { totalInflow, totalOutflow, netCashflow, avgSpend } = useMemo(() => {
+    let inflowMinor = 0;
+    let outflowMinor = 0;
+    let outflowCount = 0;
+
     for (const item of filteredTransactions) {
-      if (item.amount > 0) inflow += item.amount;
-      else outflow += Math.abs(item.amount);
+      if (item.status !== "completed" || item.type === "transfer") continue;
+      if (!selectedAccountId && item.currency !== activeCurrency) continue;
+      const amountMinor = Math.abs(toMinorUnits(item.amount));
+      if (item.amount > 0) {
+        inflowMinor += amountMinor;
+      } else {
+        outflowMinor += amountMinor;
+        outflowCount++;
+      }
     }
+
+    const inflow = fromMinorUnits(inflowMinor);
+    const outflow = fromMinorUnits(outflowMinor);
+    const avg = outflowCount > 0 ? Math.round((outflow / outflowCount) * 100) / 100 : 0;
+
     return {
       totalInflow: inflow,
       totalOutflow: outflow,
-      netCashflow: inflow - outflow,
+      netCashflow: fromMinorUnits(inflowMinor - outflowMinor),
+      avgSpend: avg,
     };
-  }, [filteredTransactions]);
+  }, [filteredTransactions, selectedAccountId, activeCurrency]);
 
-  // Section Grouping by Date
-  const groupedSections = useMemo(() => {
+  // Section Grouping by Date (Flattened for maximum list performance)
+  const flattenedListItems = useMemo<ListItem[]>(() => {
     const groups: { [key: string]: DetailedTransactionItem[] } = {};
     for (const item of filteredTransactions) {
       const key = item.dateStr.toUpperCase();
       if (!groups[key]) groups[key] = [];
       groups[key].push(item);
     }
-    return Object.entries(groups).map(([title, data]) => ({ title, data }));
+
+    const items: ListItem[] = [];
+    for (const [title, txs] of Object.entries(groups)) {
+      items.push({ type: "header", title, count: txs.length });
+      for (const tx of txs) {
+        items.push({ type: "item", transaction: tx });
+      }
+    }
+    return items;
   }, [filteredTransactions]);
 
-  // Handle Delete Confirmation
-  const handleDeleteTx = async (item: DetailedTransactionItem) => {
+  // Handle Append-Only Double-Entry Reversal
+  const handleReverseTx = async (item: DetailedTransactionItem) => {
     setSelectedTx(null);
+    const rawTx = liveTransactions.find((t) => t.id === item.id);
+    if (!rawTx) return;
+
     const confirmed = await confirm({
-      title: "Delete Transaction",
-      message: `Are you sure you want to delete "${item.name}"? This will update your balances and ledger records.`,
-      variant: "danger",
-      confirmText: "Delete",
+      title: "Post Reversal Entry",
+      message: `Posting a reversal for "${item.name}" will create an offsetting counter-entry, restore your account balance, and preserve full audit history. Proceed?`,
+      variant: "warning",
+      confirmText: "Post Reversal",
       cancelText: "Cancel",
     });
 
     if (!confirmed) return;
 
     try {
-      await deleteTxMutation.mutateAsync(item.id);
-    } catch (err: any) {
+      await reverseTxMutation.mutateAsync({ transaction: rawTx });
+    } catch (err: unknown) {
       await alert({
-        title: "Action Failed",
-        message: err.message || "Failed to delete transaction.",
+        title: "Reversal Failed",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to post reversal entry.",
         variant: "warning",
       });
     }
   };
 
+  const hasActiveFilters =
+    activeFilter !== "all" ||
+    selectedAccountId !== null ||
+    selectedCategoryId !== null ||
+    dateRange !== "all" ||
+    searchQuery.trim().length > 0;
+
+  const handleResetFilters = () => {
+    setActiveFilter("all");
+    setSelectedAccountId(null);
+    setSelectedCategoryId(null);
+    setDateRange("all");
+    setSearchQuery("");
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-[#F8F9FB]" edges={["top"]}>
-      {/* 1. QUIET UTILITY TOP BAR */}
-      <View className="flex-row items-center justify-between px-6 pt-3 pb-2">
+    <SafeAreaView
+      className="flex-1 bg-canvas dark:bg-canvas-dark"
+      edges={["top"]}
+    >
+      {/* 1. TOP HEADER & ACTION CLUSTER */}
+      <View className="flex-row items-center justify-between px-6 pt-3 pb-2 bg-transparent">
         <View className="flex-row items-center gap-2.5">
           <Pressable
-            onPress={() => router.push("/(root)/(tabs)" as any)}
+            onPress={() =>
+              router.canGoBack() ? router.back() : router.replace("/(root)/(tabs)")
+            }
             accessibilityRole="button"
             accessibilityLabel="Back to Home"
-            className="w-10 h-10 rounded-full bg-white border border-[#E4E7EC] items-center justify-center active:scale-95 shadow-2xs"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            className="w-10 h-10 rounded-full bg-surface dark:bg-surface-dark border border-surface-border dark:border-surface-border-dark items-center justify-center active:scale-95 shadow-2xs"
           >
-            <Feather name="arrow-left" size={17} color="#090D16" />
+            <Feather name="arrow-left" size={17} color="#64748B" />
           </Pressable>
           <View>
-            <Text className="text-xl font-black text-[#090D16] tracking-tight">
+            <Text className="text-xl font-black text-ink dark:text-ink-light tracking-tight">
               Ledger
             </Text>
-            <Text className="text-[11px] font-semibold text-[#64748B]">
+            <Text className="text-[11px] font-semibold text-ink-whisper dark:text-ink-whisper-dark">
               {filteredTransactions.length}{" "}
               {filteredTransactions.length === 1 ? "record" : "records"}
             </Text>
@@ -232,31 +329,43 @@ export default function TransactionsScreen() {
         </View>
 
         <View className="flex-row items-center gap-2">
+          {/* Search Toggle */}
           <Pressable
             onPress={() => setShowSearch((prev) => !prev)}
             accessibilityRole="button"
             accessibilityLabel="Search transactions"
-            className={`w-10 h-10 rounded-full border items-center justify-center shadow-2xs active:scale-95 ${
+            className={`w-10 h-10 rounded-full border items-center justify-center active:scale-95 shadow-2xs ${
               showSearch || searchQuery
-                ? "bg-[#090D16] border-[#090D16]"
-                : "bg-white border-[#E4E7EC]"
+                ? "bg-primary/15 border-primary/40"
+                : "bg-surface dark:bg-surface-dark border-surface-border dark:border-surface-border-dark"
             }`}
           >
             <Feather
               name="search"
               size={16}
-              color={showSearch || searchQuery ? "#FFFFFF" : "#090D16"}
+              color={showSearch || searchQuery ? PRIMARY : "#64748B"}
             />
           </Pressable>
 
+          {/* Camera Receipt Scanner Shortcut */}
           <Pressable
-            onPress={() => router.push("/(root)/(tabs)/AddTransactions" as any)}
+            onPress={() => setScannerModalOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Scan receipt with camera"
+            className="w-10 h-10 rounded-full bg-surface dark:bg-surface-dark border border-surface-border dark:border-surface-border-dark items-center justify-center active:scale-95 shadow-2xs"
+          >
+            <Feather name="camera" size={16} color="#22C55E" />
+          </Pressable>
+
+          {/* Add Transaction Button */}
+          <Pressable
+            onPress={() => router.push("/(root)/(tabs)/AddTransactions")}
             accessibilityRole="button"
             accessibilityLabel="Add new transaction"
-            className="h-10 px-3.5 rounded-full bg-[#D4F938] border border-[#D4F938] flex-row items-center gap-1.5 active:scale-95 shadow-2xs"
+            className="h-10 px-4 rounded-full bg-primary flex-row items-center gap-1.5 active:scale-95 shadow-2xs"
           >
-            <Ionicons name="add" size={18} color="#090D16" />
-            <Text className="text-xs font-black text-[#090D16]">New</Text>
+            <Ionicons name="add" size={18} color="#FFFFFF" />
+            <Text className="text-xs font-black text-white">New</Text>
           </Pressable>
         </View>
       </View>
@@ -264,55 +373,55 @@ export default function TransactionsScreen() {
       {/* 2. EXPANDABLE SEARCH BAR */}
       {showSearch && (
         <View className="px-6 pt-1 pb-2">
-          <View className="flex-row items-center bg-white border border-[#E4E7EC] rounded-2xl px-3.5 py-2.5 shadow-2xs">
-            <Feather name="search" size={15} color="#94A3B8" />
+          <View className="flex-row items-center bg-surface dark:bg-surface-dark border border-surface-border dark:border-surface-border-dark rounded-2xl px-3.5 py-2.5">
+            <Feather name="search" size={15} color="#A0A0A3" />
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search merchant, category, account..."
-              placeholderTextColor="#94A3B8"
-              className="flex-1 ml-2.5 text-xs font-medium text-[#090D16] py-0"
+              placeholder="Search merchant, category, account, note..."
+              placeholderTextColor="#A0A0A3"
+              className="flex-1 ml-2.5 text-xs font-medium text-ink dark:text-ink-light py-0"
               autoFocus
             />
             {searchQuery ? (
               <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
-                <Feather name="x-circle" size={15} color="#94A3B8" />
+                <Feather name="x-circle" size={15} color="#A0A0A3" />
               </Pressable>
             ) : null}
           </View>
         </View>
       )}
 
-      {/* 3. NEO-BANKING CASHFLOW METRIC CARD (Matching Home Page) */}
-      <View className="mx-6 mt-2 mb-3 bg-white rounded-3xl p-4 border border-[#E4E7EC] shadow-[0_4px_20px_rgba(9,13,22,0.04)]">
+      {/* 3. CASHFLOW & PERIOD METRICS BANNER */}
+      <View className="mx-6 mt-2 mb-3 bg-surface dark:bg-surface-dark rounded-3xl p-4 border border-surface-border dark:border-surface-border-dark shadow-2xs">
         <View className="flex-row items-center justify-between mb-2.5">
-          <Text className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider">
+          <Text className="text-[10px] font-bold text-ink-muted dark:text-ink-muted-dark uppercase tracking-wider">
             {activeFilter === "all"
-              ? "Cashflow Balance"
+              ? "Net Period Balance"
               : `${activeFilter} Total`}
           </Text>
-          <View className="px-2.5 py-0.5 rounded-full bg-[#F4F5F7]">
-            <Text className="text-[10px] font-bold text-[#090D16]">
-              Net: {formatCurrency(netCashflow, storeCurrency, { showSign: true })}
+          <View className="px-2.5 py-0.5 rounded-full bg-surface-muted dark:bg-surface-muted-dark border border-surface-border dark:border-surface-border-dark">
+            <Text className="text-[10px] font-bold text-ink dark:text-ink-light tabular-nums">
+              Net: {formatCurrency(netCashflow, activeCurrency, { showSign: true })}
             </Text>
           </View>
         </View>
 
         <View className="flex-row items-center gap-2">
           {/* Inflow Micro-Pill */}
-          <View className="flex-1 flex-row items-center gap-2 py-2 px-3 rounded-2xl bg-emerald-50/80 border border-emerald-100">
-            <View className="w-5 h-5 rounded-full bg-emerald-500/15 items-center justify-center">
-              <Feather name="arrow-down-left" size={11} color="#059669" />
+          <View className="flex-1 flex-row items-center gap-2 py-2 px-3 rounded-2xl bg-emerald-dim border border-emerald/25">
+            <View className="w-5 h-5 rounded-full bg-emerald/15 items-center justify-center">
+              <Feather name="arrow-down-left" size={11} color={EMERALD} />
             </View>
             <View className="flex-1">
-              <Text className="text-[8px] font-bold text-emerald-800/70 uppercase">
+              <Text className="text-[8px] font-bold text-ink-muted dark:text-ink-muted-dark uppercase">
                 Inflow
               </Text>
               <Text
                 numberOfLines={1}
-                className="text-xs font-black text-emerald-700 tabular-nums"
+                className="text-xs font-black text-emerald tabular-nums"
               >
-                {formatCurrency(totalInflow, storeCurrency, {
+                {formatCurrency(totalInflow, activeCurrency, {
                   showPositivePrefix: true,
                 })}
               </Text>
@@ -320,28 +429,46 @@ export default function TransactionsScreen() {
           </View>
 
           {/* Outflow Micro-Pill */}
-          <View className="flex-1 flex-row items-center gap-2 py-2 px-3 rounded-2xl bg-rose-50/80 border border-rose-100">
-            <View className="w-5 h-5 rounded-full bg-rose-500/15 items-center justify-center">
-              <Feather name="arrow-up-right" size={11} color="#E11D48" />
+          <View className="flex-1 flex-row items-center gap-2 py-2 px-3 rounded-2xl bg-coral-dim border border-coral/25">
+            <View className="w-5 h-5 rounded-full bg-coral/15 items-center justify-center">
+              <Feather name="arrow-up-right" size={11} color={CORAL} />
             </View>
             <View className="flex-1">
-              <Text className="text-[8px] font-bold text-rose-800/70 uppercase">
+              <Text className="text-[8px] font-bold text-ink-muted dark:text-ink-muted-dark uppercase">
                 Outflow
               </Text>
               <Text
                 numberOfLines={1}
-                className="text-xs font-black text-rose-700 tabular-nums"
+                className="text-xs font-black text-coral tabular-nums"
               >
-                {formatCurrency(-totalOutflow, storeCurrency, {
+                {formatCurrency(-totalOutflow, activeCurrency, {
                   showSign: true,
                 })}
               </Text>
             </View>
           </View>
         </View>
+
+        {/* Filter Reset Indicator */}
+        {hasActiveFilters && (
+          <View className="mt-2.5 pt-2 border-t border-surface-divider dark:border-surface-border-dark flex-row items-center justify-between">
+            <Text className="text-[10px] text-ink-whisper dark:text-ink-whisper-dark">
+              Filters active ({filteredTransactions.length} results)
+            </Text>
+            <Pressable
+              onPress={handleResetFilters}
+              className="flex-row items-center gap-1 active:opacity-75"
+            >
+              <Feather name="rotate-ccw" size={11} color="#22C55E" />
+              <Text className="text-[10px] font-black text-primary">
+                Reset All Filters
+              </Text>
+            </Pressable>
+          </View>
+        )}
       </View>
 
-      {/* 4. TACTILE HORIZONTAL TYPE FILTER CHIPS */}
+      {/* 4. TYPE FILTER CHIPS (All, Expense, Income, Transfer) */}
       <View className="mb-2">
         <ScrollView
           horizontal
@@ -354,15 +481,17 @@ export default function TransactionsScreen() {
               <Pressable
                 key={filter}
                 onPress={() => setActiveFilter(filter)}
-                className={`px-4 py-2 rounded-full border active:scale-95 shadow-2xs ${
+                className={`px-3.5 py-1.5 rounded-full border active:scale-95 shadow-2xs ${
                   isActive
-                    ? "bg-[#D4F938] border-[#D4F938]"
-                    : "bg-white border-[#E4E7EC]"
+                    ? "bg-primary border-primary"
+                    : "bg-surface dark:bg-surface-dark border-surface-border dark:border-surface-border-dark"
                 }`}
               >
                 <Text
                   className={`text-xs font-bold capitalize ${
-                    isActive ? "text-[#090D16]" : "text-[#64748B]"
+                    isActive
+                      ? "text-white"
+                      : "text-ink-muted dark:text-ink-muted-dark"
                   }`}
                 >
                   {filter}
@@ -370,74 +499,130 @@ export default function TransactionsScreen() {
               </Pressable>
             );
           })}
+
+          {/* Time Range Horizon Chips */}
+          {(
+            [
+              { key: "all", label: "All Time" },
+              { key: "this_month", label: "This Month" },
+              { key: "last_7_days", label: "7 Days" },
+              { key: "last_month", label: "Last Month" },
+            ] as const
+          ).map((item) => {
+            const isSelected = dateRange === item.key;
+            return (
+              <Pressable
+                key={item.key}
+                onPress={() => setDateRange(item.key)}
+                className={`px-3 py-1.5 rounded-full border active:scale-95 ${
+                  isSelected
+                    ? "bg-ink dark:bg-ink-light border-ink dark:border-ink-light"
+                    : "bg-surface dark:bg-surface-dark border-surface-border dark:border-surface-border-dark"
+                }`}
+              >
+                <Text
+                  className={`text-xs font-bold ${
+                    isSelected
+                      ? "text-canvas dark:text-canvas-dark font-black"
+                      : "text-ink-muted dark:text-ink-muted-dark"
+                  }`}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </ScrollView>
       </View>
 
-      {/* 5. ACCOUNT SECONDARY FILTER CHIPS */}
-      {accounts.length > 1 && (
-        <View className="mb-3">
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 24, gap: 6 }}
+      {/* 5. CATEGORY FILTER CHIPS */}
+      <View className="mb-3">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 24, gap: 6 }}
+        >
+          <Pressable
+            onPress={() => setSelectedCategoryId(null)}
+            className={`px-3 py-1 rounded-full border active:scale-95 ${
+              selectedCategoryId === null
+                ? "bg-surface-muted dark:bg-surface-muted-dark border-primary"
+                : "bg-surface dark:bg-surface-dark border-surface-border dark:border-surface-border-dark"
+            }`}
           >
-            <Pressable
-              onPress={() => setSelectedAccountId(null)}
-              className={`px-3 py-1 rounded-full border ${
-                selectedAccountId === null
-                  ? "bg-[#090D16] border-[#090D16]"
-                  : "bg-white border-[#E4E7EC]"
+            <Text
+              className={`text-[10px] font-bold ${
+                selectedCategoryId === null
+                  ? "text-primary font-black"
+                  : "text-ink-muted dark:text-ink-muted-dark"
               }`}
             >
-              <Text
-                className={`text-[10px] font-bold ${
-                  selectedAccountId === null ? "text-white" : "text-[#64748B]"
+              All Categories
+            </Text>
+          </Pressable>
+
+          {categories.map((cat) => {
+            const isSelected = selectedCategoryId === cat.id;
+            return (
+              <Pressable
+                key={cat.id}
+                onPress={() =>
+                  setSelectedCategoryId(isSelected ? null : cat.id)
+                }
+                className={`flex-row items-center gap-1.5 px-3 py-1 rounded-full border active:scale-95 ${
+                  isSelected
+                    ? "bg-surface-muted dark:bg-surface-muted-dark border-primary"
+                    : "bg-surface dark:bg-surface-dark border-surface-border dark:border-surface-border-dark"
                 }`}
               >
-                All Accounts
-              </Text>
-            </Pressable>
-
-            {accounts.map((acc) => {
-              const isSelected = selectedAccountId === acc.id;
-              return (
-                <Pressable
-                  key={acc.id}
-                  onPress={() =>
-                    setSelectedAccountId(isSelected ? null : acc.id)
-                  }
-                  className={`px-3 py-1 rounded-full border ${
+                <CategoryIcon
+                  icon={cat.icon}
+                  size={11}
+                  color={isSelected ? "#22C55E" : "#A0A0A3"}
+                />
+                <Text
+                  className={`text-[10px] font-bold ${
                     isSelected
-                      ? "bg-[#090D16] border-[#090D16]"
-                      : "bg-white border-[#E4E7EC]"
+                      ? "text-primary font-black"
+                      : "text-ink-muted dark:text-ink-muted-dark"
                   }`}
                 >
-                  <Text
-                    className={`text-[10px] font-bold ${
-                      isSelected ? "text-white" : "text-[#64748B]"
-                    }`}
-                  >
-                    {acc.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
+                  {cat.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       {/* 6. TRANSACTIONS SECTION FEED */}
       {isLoading ? (
         <View className="flex-1 items-center justify-center py-20">
-          <ActivityIndicator size="large" color="#090D16" />
-          <Text className="text-xs font-semibold text-[#64748B] mt-3">
-            Loading ledger...
+          <ActivityIndicator size="large" color={PRIMARY} />
+          <Text className="text-xs font-semibold text-ink-muted dark:text-ink-muted-dark mt-3">
+            Loading ledger records...
           </Text>
+        </View>
+      ) : isError ? (
+        <View className="px-6 pt-6">
+          <ErrorState
+            title="Could not load ledger"
+            message={
+              error instanceof Error
+                ? error.message
+                : "Failed to load transactions."
+            }
+            onRetry={onRefresh}
+          />
         </View>
       ) : (
         <FlatList
-          data={groupedSections}
-          keyExtractor={(item) => item.title}
+          data={flattenedListItems}
+          keyExtractor={(item, index) =>
+            item.type === "header"
+              ? `header-${item.title}-${index}`
+              : `tx-${item.transaction.id}`
+          }
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{
             paddingHorizontal: 24,
@@ -448,61 +633,74 @@ export default function TransactionsScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#090D16"
+              tintColor={PRIMARY}
             />
           }
           ListEmptyComponent={
-            <View className="items-center justify-center py-20 bg-white rounded-3xl p-6 border border-[#E4E7EC] mt-4 shadow-2xs">
-              <View className="w-14 h-14 rounded-2xl bg-[#F8F9FB] border border-[#E4E7EC] items-center justify-center mb-3">
-                <Ionicons name="receipt-outline" size={26} color="#94A3B8" />
+            <View className="items-center justify-center py-16 bg-surface dark:bg-surface-dark rounded-3xl p-6 border border-surface-border dark:border-surface-border-dark mt-4 shadow-2xs">
+              <View className="w-14 h-14 rounded-2xl bg-surface-muted dark:bg-surface-muted-dark border border-surface-border dark:border-surface-border-dark items-center justify-center mb-3">
+                <Ionicons
+                  name="receipt-outline"
+                  size={26}
+                  color="#A0A0A3"
+                />
               </View>
-              <Text className="text-base font-black text-[#090D16]">
+              <Text className="text-base font-black text-ink dark:text-ink-light">
                 No transactions found
               </Text>
-              <Text className="text-xs text-[#64748B] text-center mt-1 max-w-[220px]">
-                {searchQuery
-                  ? `No matching records for "${searchQuery}"`
-                  : "Start building your ledger by recording a payment or income."}
+              <Text className="text-xs text-ink-muted dark:text-ink-muted-dark text-center mt-1 max-w-[240px]">
+                {hasActiveFilters
+                  ? "No transactions match your current search and filter criteria."
+                  : "Start recording your expenses, income, and transfers."}
               </Text>
 
-              <Pressable
-                onPress={() =>
-                  router.push("/(root)/(tabs)/AddTransactions" as any)
-                }
-                className="mt-4 px-5 py-2.5 rounded-full bg-[#D4F938] border border-[#D4F938] flex-row items-center gap-1.5 active:scale-95"
-              >
-                <Ionicons name="add" size={16} color="#090D16" />
-                <Text className="text-xs font-black text-[#090D16]">
-                  Record Transaction
-                </Text>
-              </Pressable>
+              {hasActiveFilters ? (
+                <Pressable
+                  onPress={handleResetFilters}
+                  className="mt-4 px-5 py-2.5 rounded-full bg-surface-muted dark:bg-surface-muted-dark border border-surface-border dark:border-surface-border-dark flex-row items-center gap-1.5 active:scale-95"
+                >
+                  <Feather name="rotate-ccw" size={14} color="#22C55E" />
+                  <Text className="text-xs font-black text-primary">
+                    Clear Filters
+                  </Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  onPress={() => router.push("/(root)/(tabs)/AddTransactions")}
+                  className="mt-4 px-5 py-2.5 rounded-full bg-primary flex-row items-center gap-1.5 active:scale-95"
+                >
+                  <Ionicons name="add" size={16} color="#FFFFFF" />
+                  <Text className="text-xs font-black text-white">
+                    Record Transaction
+                  </Text>
+                </Pressable>
+              )}
             </View>
           }
-          renderItem={({ item: section }) => (
-            <View className="mb-5">
-              {/* Section Header */}
-              <View className="flex-row items-center justify-between mb-2 px-1">
-                <Text className="text-[11px] font-extrabold text-[#94A3B8] tracking-wider uppercase">
-                  {section.title}
-                </Text>
-                <Text className="text-[10px] font-semibold text-[#94A3B8]">
-                  {section.data.length}{" "}
-                  {section.data.length === 1 ? "item" : "items"}
-                </Text>
-              </View>
+          renderItem={({ item }) => {
+            if (item.type === "header") {
+              return (
+                <View className="flex-row items-center justify-between pt-4 pb-2 px-1">
+                  <Text className="text-[11px] font-black text-ink-whisper dark:text-ink-whisper-dark tracking-wider uppercase">
+                    {item.title}
+                  </Text>
+                  <Text className="text-[10px] font-semibold text-ink-whisper dark:text-ink-whisper-dark">
+                    {item.count} {item.count === 1 ? "item" : "items"}
+                  </Text>
+                </View>
+              );
+            }
 
-              {/* Transactions List */}
-              <View className="gap-2.5">
-                {section.data.map((tx) => (
-                  <TransactionRowItem
-                    key={tx.id}
-                    item={tx}
-                    onPress={setSelectedTx}
-                  />
-                ))}
+            return (
+              <View className="py-1">
+                <TransactionRowItem
+                  item={item.transaction}
+                  onPress={setSelectedTx}
+                  onDelete={handleReverseTx}
+                />
               </View>
-            </View>
-          )}
+            );
+          }}
         />
       )}
 
@@ -510,13 +708,32 @@ export default function TransactionsScreen() {
       <TransactionDetailModal
         transaction={selectedTx}
         onClose={() => setSelectedTx(null)}
-        onDelete={handleDeleteTx}
+        onReverse={handleReverseTx}
         onEdit={(item) => {
           setSelectedTx(null);
           router.push({
             pathname: "/(root)/(tabs)/AddTransactions",
             params: { editId: item.id },
-          } as any);
+          });
+        }}
+      />
+
+      {/* 8. MULTIMODAL RECEIPT SCANNER MODAL */}
+      <ReceiptScannerModal
+        visible={scannerModalOpen}
+        onClose={() => setScannerModalOpen(false)}
+        currency={activeCurrency}
+        onApplyScannedData={(data) => {
+          setScannerModalOpen(false);
+          router.push({
+            pathname: "/(root)/(tabs)/AddTransactions",
+            params: {
+              initialType: "expense",
+              initialAmount: String(data.amount),
+              initialDescription: data.merchant,
+              initialCategory: data.category,
+            },
+          });
         }}
       />
     </SafeAreaView>

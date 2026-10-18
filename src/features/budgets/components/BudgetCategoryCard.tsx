@@ -1,6 +1,7 @@
 import Feather from "@expo/vector-icons/Feather";
-import { formatCurrency } from "@shared/lib/currency";
+import React from "react";
 import { Pressable, Text, View } from "react-native";
+import { formatCurrency } from "@shared/lib/currency";
 import type { BudgetCardProps } from "../types";
 
 export function BudgetCard({
@@ -17,137 +18,137 @@ export function BudgetCard({
     percent,
     isExceeded,
     periodLabel,
+    daysRemaining,
+    safeDailySpend,
     category,
     account,
   } = item;
 
-  // Thin progress bar along bottom edge
-  // Filling left to right as spending approaches limit, going gold (#D4F938) when exceeded
-  const progressWidth = Math.min(percent, 100);
-  const progressBarColor = isExceeded ? "#D4F938" : "#090D16";
+  const displayPercent = Math.min(percent, 100);
+  const percentLeft = Math.max(0, 100 - percent);
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`View details for ${name} budget`}
-      className="bg-white rounded-2xl p-4 mb-3 border border-[#E4E7EC] shadow-xs active:bg-[#F9FAFC] overflow-hidden relative"
+      className="bg-surface rounded-2xl p-4 mb-3 border border-surface-border shadow-2xs overflow-hidden active:scale-[0.99]"
     >
-      {/* Single row split in two */}
-      <View className="flex-row items-center justify-between pb-1.5">
-        {/* Left Side: Large spent amount text & limit subtext */}
-        <View className="flex-1 mr-3">
-          <Text className="text-2xl font-black text-[#090D16] tracking-tight tabular-nums">
-            {formatCurrency(spent, currency, { maximumFractionDigits: 0 })}
-          </Text>
+      {/* 1. TOP ROW: Indicator Dot + Title/Scope + Period Badge + Edit Button */}
+      <View className="flex-row items-center justify-between mb-3">
+        <View className="flex-row items-center gap-2 flex-1 mr-2">
+          <View
+            className={`w-2 h-2 rounded-full ${
+              isExceeded
+                ? "bg-coral"
+                : percent >= 85
+                ? "bg-amber-500"
+                : "bg-emerald-600 dark:bg-primary"
+            }`}
+          />
           <Text
-            className="text-xs font-semibold text-[#64748B] mt-0.5"
             numberOfLines={1}
+            className="text-xs font-black uppercase tracking-wider text-[#525866] dark:text-ink-muted"
           >
-            of {formatCurrency(amount, currency, { maximumFractionDigits: 0 })}{" "}
-            limit • {name}
-          </Text>
-          <Text
-            className="text-[11px] font-bold text-[#64748B] mt-1"
-            numberOfLines={1}
-          >
-            {isExceeded ? (
-              <Text className="text-[#E11D48]">
-                +
-                {formatCurrency(spent - amount, currency, {
-                  maximumFractionDigits: 0,
-                })}{" "}
-                over limit
-              </Text>
-            ) : (
-              `${formatCurrency(remaining, currency, { maximumFractionDigits: 0 })} left`
-            )}{" "}
-            • {item.daysRemaining}d left •{" "}
-            {formatCurrency(item.safeDailySpend, currency, {
-              maximumFractionDigits: 0,
-            })}
-            /d
+            {category?.name || account?.name || name}
           </Text>
         </View>
 
-        {/* Right Side: Period label in smaller text above or below scope tag */}
-        <View className="items-end gap-1.5">
-          <View className="flex-row items-center gap-1.5">
-            <Text className="text-xs font-bold text-[#64748B]">
+        <View className="flex-row items-center gap-2">
+          <View className="px-2.5 py-0.5 rounded-full bg-[#EEF2F6] dark:bg-surface-muted border border-surface-border">
+            <Text className="text-[11px] font-bold text-[#344054] dark:text-ink">
               {periodLabel}
             </Text>
-            {onEdit && (
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onEdit();
-                }}
-                hitSlop={8}
-                className="w-6 h-6 rounded-full bg-[#F4F5F7] items-center justify-center active:bg-gray-200"
-              >
-                <Feather name="edit-2" size={11} color="#090D16" />
-              </Pressable>
-            )}
           </View>
 
-          {/* Scope badges (Category / Account / All) */}
-          <View className="flex-row items-center gap-1">
-            {category ? (
-              <View className="flex-row items-center gap-1 bg-[#F4F5F7] px-2 py-0.5 rounded-md">
-                <Text className="text-[10px]">{category.icon || "🏷️"}</Text>
-                <Text
-                  className="text-[10px] font-bold text-[#090D16]"
-                  numberOfLines={1}
-                >
-                  {category.name}
-                </Text>
-              </View>
-            ) : account ? (
-              <View className="flex-row items-center gap-1 bg-[#F4F5F7] px-2 py-0.5 rounded-md">
-                <Text className="text-[10px]">🏦</Text>
-                <Text
-                  className="text-[10px] font-bold text-[#090D16]"
-                  numberOfLines={1}
-                >
-                  {account.name}
-                </Text>
-              </View>
-            ) : (
-              <View className="bg-[#F4F5F7] px-2 py-0.5 rounded-md">
-                <Text className="text-[10px] font-bold text-[#64748B]">
-                  All Spending
-                </Text>
-              </View>
-            )}
-
-            {isExceeded ? (
-              <View className="bg-[#D4F938] px-1.5 py-0.5 rounded-md">
-                <Text className="text-[9px] font-black text-[#090D16]">
-                  EXCEEDED
-                </Text>
-              </View>
-            ) : (
-              <Text className="text-[10px] font-semibold text-[#64748B] tabular-nums">
-                {percent}%
-              </Text>
-            )}
-          </View>
+          {onEdit && (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit ${name} budget`}
+              className="w-7 h-7 rounded-full bg-[#EEF2F6] dark:bg-surface-muted border border-surface-border items-center justify-center active:scale-95"
+            >
+              <Feather name="edit-2" size={12} color="#64748B" />
+            </Pressable>
+          )}
         </View>
       </View>
 
-      {/* Thin progress bar running along the bottom edge of the card */}
-      <View className="absolute bottom-0 left-0 right-0 h-1.5 bg-[#F4F5F7]">
+      {/* 2. SPENT HERO READOUT + PERCENT LEFT BADGE */}
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-baseline flex-1 mr-2 flex-wrap">
+          <Text className="text-xl sm:text-2xl font-black text-ink tracking-tight tabular-nums">
+            {formatCurrency(spent, currency, { maximumFractionDigits: 0 })}
+          </Text>
+          <Text className="text-xs font-semibold text-[#667085] dark:text-ink-muted ml-1.5">
+            spent of {formatCurrency(amount, currency, { maximumFractionDigits: 0 })}
+          </Text>
+        </View>
+
+        {/* Pill Badge: Mint if remaining, Coral if exceeded */}
         <View
-          style={{
-            width: `${progressWidth}%`,
-            backgroundColor: progressBarColor,
-          }}
-          className="h-full"
+          className={`px-2.5 py-0.5 rounded-full border ${
+            isExceeded
+              ? "bg-[#FEF3F2] dark:bg-rose-950/40 border-rose-500/25"
+              : "bg-[#E8F7EE] dark:bg-emerald-950/40 border-emerald-500/25"
+          }`}
+        >
+          <Text
+            className={`text-[11px] font-black tabular-nums ${
+              isExceeded
+                ? "text-[#B42318] dark:text-rose-400"
+                : "text-[#0D6B3A] dark:text-emerald-400"
+            }`}
+          >
+            {isExceeded ? `+${percent - 100}% over` : `${percentLeft}% left`}
+          </Text>
+        </View>
+      </View>
+
+      {/* 3. SMOOTH PROGRESS BAR */}
+      <View className="h-1.5 w-full bg-[#EAECF0] dark:bg-surface-muted rounded-full overflow-hidden my-3">
+        <View
+          style={{ width: `${displayPercent}%` }}
+          className={`h-full rounded-full ${
+            isExceeded
+              ? "bg-coral"
+              : percent >= 85
+              ? "bg-amber-500"
+              : "bg-emerald-500"
+          }`}
         />
+      </View>
+
+      {/* 4. PACING & REMAINING DAYS SUB-ROW */}
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center gap-1.5 flex-1 mr-2">
+          <Feather
+            name={isExceeded ? "alert-circle" : "check-circle"}
+            size={13}
+            color={isExceeded ? "#EF4444" : "#0D6B3A"}
+          />
+          <Text
+            numberOfLines={1}
+            className={`text-[11px] font-bold ${
+              isExceeded
+                ? "text-coral"
+                : "text-[#0D6B3A] dark:text-emerald-400"
+            }`}
+          >
+            {isExceeded
+              ? `Exceeded limit by ${formatCurrency(spent - amount, currency, { maximumFractionDigits: 0 })}`
+              : `${percent}% spent · ${formatCurrency(safeDailySpend, currency, { maximumFractionDigits: 0 })}/d safe`}
+          </Text>
+        </View>
+
+        <Text className="text-[11px] font-semibold text-[#667085] dark:text-ink-muted tabular-nums">
+          {daysRemaining} {daysRemaining === 1 ? "day left" : "days left"}
+        </Text>
       </View>
     </Pressable>
   );
 }
-
-// Backward-compatible alias
-export const BudgetCategoryCard = BudgetCard;
