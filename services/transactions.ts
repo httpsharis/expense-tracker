@@ -271,3 +271,32 @@ export async function updateTransaction(
   if (updateError) throw updateError;
   return updatedRow as TransactionRow;
 }
+
+/**
+ * Deletes/reverses a transaction owned by the user.
+ * Dispatches to reverseTransaction to maintain append-only ledger integrity.
+ */
+export async function deleteTransaction(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  transactionId: string,
+  reason: string = "User deleted transaction",
+): Promise<TransactionRow> {
+  const { data: tx, error } = await supabase
+    .from("transactions")
+    .select("*, category:categories(id, name, icon), account:accounts!transactions_account_id_fkey(id, name, currency)")
+    .eq("id", transactionId)
+    .eq("user_id", userId)
+    .single();
+
+  if (error || !tx) {
+    throw new Error(error?.message || "Transaction not found");
+  }
+
+  return reverseTransaction(
+    supabase,
+    userId,
+    tx as unknown as TransactionWithCategory,
+    reason,
+  );
+}
