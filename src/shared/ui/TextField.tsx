@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useColorScheme } from "nativewind";
 import { forwardRef, useState } from "react";
 import {
     TextInput,
@@ -12,6 +11,8 @@ export interface TextFieldProps extends TextInputProps {
   className?: string;
   inputClassName?: string;
   variant?: "filled" | "outlined";
+  leftElement?: React.ReactNode;
+  rightElement?: React.ReactNode;
 }
 
 export const TextField = forwardRef<TextInput, TextFieldProps>(
@@ -21,33 +22,34 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(
       inputClassName = "",
       variant = "filled",
       secureTextEntry,
+      leftElement,
+      rightElement,
       ...props
     },
     ref,
   ) => {
-    const { colorScheme } = useColorScheme();
-    const isDark = colorScheme === "dark";
-
     const [isPasswordVisible, setIsPasswordVisible] = useState(false);
     const isPasswordToggleable = secureTextEntry !== undefined;
     const isActuallySecure = isPasswordToggleable && !isPasswordVisible;
 
     const baseContainerStyle =
       variant === "filled"
-        ? "bg-[#ECECEE] dark:bg-[#1C1C1F] border border-transparent"
-        : "bg-white dark:bg-[#141416] border border-slate-200 dark:border-slate-800";
+        ? "bg-surface-muted border border-surface-border"
+        : "bg-surface border border-surface-border";
 
     return (
       <View
-        className={`h-[52px] w-full flex-row items-center px-4 rounded-xl ${baseContainerStyle} ${className}`}
+        className={`h-14 w-full flex-row items-center px-4 rounded-2xl ${baseContainerStyle} ${className}`}
       >
+        {leftElement && <View className="mr-2">{leftElement}</View>}
         <TextInput
           ref={ref}
-          placeholderTextColor={isDark ? "#6B6B70" : "#8E8E93"}
-          className={`flex-1 font-body text-[16px] text-slate-900 dark:text-slate-100 h-full ${inputClassName}`}
+          placeholderTextColor="#A0A0A3"
+          className={`flex-1 text-[15px] font-semibold text-ink h-full ${inputClassName}`}
           secureTextEntry={isActuallySecure}
           {...props}
         />
+        {rightElement && <View className="ml-2">{rightElement}</View>}
         {isPasswordToggleable && (
           <TouchableOpacity
             onPress={() => setIsPasswordVisible(!isPasswordVisible)}
@@ -56,8 +58,8 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(
           >
             <Ionicons
               name={isPasswordVisible ? "eye-off" : "eye"}
-              size={19}
-              color={isDark ? "#6B6B70" : "#8E8E93"}
+              size={20}
+              color="#71717A"
             />
           </TouchableOpacity>
         )}

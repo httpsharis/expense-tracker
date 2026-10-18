@@ -8,6 +8,17 @@
 export const GOLD = '#C9A24B';
 export const GOLD_DIM = 'rgba(201,162,75,0.14)';
 
+/**
+ * Primary Brand & Accent Tokens
+ */
+export const PRIMARY = '#22C55E';
+export const LIME = '#22C55E';
+export const EMERALD = '#16A34A';
+export const CORAL = '#EF4444';
+export const CANVAS_LIGHT = '#F7F7F5';
+export const SURFACE_TINT_LIGHT = '#F4F4F5';
+export const BORDER_LIGHT = '#E4E4E7';
+
 export interface ThemeTokens {
   // Screen-level backgrounds
   bgCanvas: string;
@@ -19,6 +30,7 @@ export interface ThemeTokens {
 
   // Raised surfaces — buttons, elevated cards
   surfaceRaised: string;
+  surfaceTint?: string;
   shadowColor: string;
 
   // Overlay surfaces — blurred, floats over other content
@@ -36,18 +48,24 @@ export interface ThemeTokens {
   btnFill: string;
   btnText: string;
 
+  // Accents & Signals
   gold: string;
   goldDim: string;
+  primary?: string;
+  lime?: string;
+  emerald?: string;
+  coral?: string;
 }
 
 const dark: ThemeTokens = {
-  bgCanvas: '#000000',
+  bgCanvas: '#0A0A0B',
   bgBase: '#0A0A0B',
 
   surfaceFlat: '#141416',
   surfaceFlatBorder: 'rgba(255,255,255,0.08)',
 
   surfaceRaised: '#18181B',
+  surfaceTint: '#1F1F23',
   shadowColor: '#000000',
 
   overlayTint: 'rgba(10,10,11,0.72)',
@@ -59,21 +77,26 @@ const dark: ThemeTokens = {
 
   divider: 'rgba(255,255,255,0.08)',
 
-  btnFill: '#F2F2F0',
+  btnFill: '#22C55E',
   btnText: '#0A0A0B',
 
   gold: GOLD,
   goldDim: GOLD_DIM,
+  primary: PRIMARY,
+  lime: LIME,
+  emerald: EMERALD,
+  coral: CORAL,
 };
 
 const light: ThemeTokens = {
-  bgCanvas: '#FFFFFF',
-  bgBase: '#F7F7F5',
+  bgCanvas: '#F7F7F5',
+  bgBase: '#FFFFFF',
 
   surfaceFlat: '#FFFFFF',
-  surfaceFlatBorder: 'rgba(10,10,11,0.10)',
+  surfaceFlatBorder: '#E4E4E7',
 
   surfaceRaised: '#FFFFFF',
+  surfaceTint: '#F4F4F5',
   shadowColor: '#0A0A0B',
 
   overlayTint: 'rgba(255,255,255,0.72)',
@@ -85,20 +108,27 @@ const light: ThemeTokens = {
 
   divider: 'rgba(10,10,11,0.08)',
 
-  btnFill: '#0A0A0B',
-  btnText: '#F5F5F3',
+  btnFill: '#22C55E',
+  btnText: '#FFFFFF',
 
   gold: GOLD,
   goldDim: GOLD_DIM,
+  primary: PRIMARY,
+  lime: LIME,
+  emerald: EMERALD,
+  coral: CORAL,
 };
 
 export const themes = { light, dark } as const;
 export type ThemeName = keyof typeof themes;
 
 export const radii = {
-  screen: 22,
-  card: 14,
-  input: 10,
+  screen: 32,
+  card: 28,
+  cardSm: 24,
+  button: 18,
+  input: 16,
+  pill: 9999,
 } as const;
 
 export const spacing = {

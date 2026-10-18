@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 
-import { PromptVariant, usePromptStore } from "../../../store/promptStore";
+import { PromptVariant, usePromptStore } from "@store/promptStore";
 
 interface VariantConfig {
   iconName: keyof typeof Feather.glyphMap;
@@ -20,33 +20,33 @@ interface VariantConfig {
 const VARIANT_CONFIGS: Record<PromptVariant, VariantConfig> = {
   danger: {
     iconName: "trash-2",
-    iconColor: "#E11D48",
-    iconBg: "bg-rose-50 border border-rose-100",
+    iconColor: "#EF4444",
+    iconBg: "bg-rose-500/10 border border-rose-500/20",
     confirmBtnBg: "bg-rose-600 active:bg-rose-700",
   },
   warning: {
     iconName: "alert-triangle",
-    iconColor: "#D97706",
-    iconBg: "bg-amber-50 border border-amber-100",
-    confirmBtnBg: "bg-[#090D16] active:opacity-85",
+    iconColor: "#F59E0B",
+    iconBg: "bg-amber-500/10 border border-amber-500/20",
+    confirmBtnBg: "bg-primary active:opacity-85",
   },
   info: {
     iconName: "info",
-    iconColor: "#2563EB",
-    iconBg: "bg-blue-50 border border-blue-100",
-    confirmBtnBg: "bg-[#090D16] active:opacity-85",
+    iconColor: "#3B82F6",
+    iconBg: "bg-blue-500/10 border border-blue-500/20",
+    confirmBtnBg: "bg-primary active:opacity-85",
   },
   success: {
     iconName: "check",
-    iconColor: "#059669",
-    iconBg: "bg-emerald-50 border border-emerald-100",
-    confirmBtnBg: "bg-[#090D16] active:opacity-85",
+    iconColor: "#22C55E",
+    iconBg: "bg-primary/10 border border-primary/20",
+    confirmBtnBg: "bg-primary active:opacity-85",
   },
   default: {
     iconName: "help-circle",
-    iconColor: "#090D16",
-    iconBg: "bg-gray-100 border border-gray-200",
-    confirmBtnBg: "bg-[#090D16] active:opacity-85",
+    iconColor: "#71717A",
+    iconBg: "bg-surface-muted border border-surface-border",
+    confirmBtnBg: "bg-primary active:opacity-85",
   },
 };
 
@@ -83,7 +83,7 @@ export function UniversalPromptModal() {
       >
         <Pressable
           onPress={(e) => e.stopPropagation()}
-          className="w-full max-w-[340px] bg-white rounded-[28px] p-6 shadow-2xl border border-gray-100"
+          className="w-full max-w-[340px] bg-surface rounded-[28px] p-6 shadow-2xl border border-surface-border"
         >
           {/* Top Badge Icon */}
           <View
@@ -97,13 +97,13 @@ export function UniversalPromptModal() {
           </View>
 
           {/* Title */}
-          <Text className="text-lg font-black text-[#090D16] tracking-tight">
+          <Text className="text-lg font-bold text-ink tracking-tight">
             {options.title}
           </Text>
 
           {/* Message Description */}
           {options.message ? (
-            <Text className="text-sm font-medium text-[#525866] leading-relaxed mt-2">
+            <Text className="text-sm font-normal text-ink-muted leading-relaxed mt-2">
               {options.message}
             </Text>
           ) : null}
@@ -114,7 +114,7 @@ export function UniversalPromptModal() {
               onPress={() => close(true)}
               accessibilityRole="button"
               accessibilityLabel={options.confirmText || "Understood"}
-              className="w-full h-12 rounded-2xl bg-[#090D16] items-center justify-center mt-6 active:opacity-85 shadow-xs"
+              className="w-full h-12 rounded-2xl bg-primary items-center justify-center mt-6 active:opacity-85 shadow-xs"
             >
               <Text className="text-sm font-bold text-white">
                 {options.confirmText || "Understood"}
@@ -127,9 +127,9 @@ export function UniversalPromptModal() {
                 disabled={isProcessing}
                 accessibilityRole="button"
                 accessibilityLabel={options.cancelText || "Cancel"}
-                className="flex-1 h-12 rounded-2xl bg-[#F4F5F7] border border-[#E4E7EC] items-center justify-center active:bg-gray-200"
+                className="flex-1 h-12 rounded-2xl bg-surface-muted border border-surface-border items-center justify-center active:opacity-80"
               >
-                <Text className="text-sm font-bold text-[#525866]">
+                <Text className="text-sm font-semibold text-ink-muted">
                   {options.cancelText || "Cancel"}
                 </Text>
               </Pressable>

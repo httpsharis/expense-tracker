@@ -4,40 +4,72 @@
 
 @layer base {
   :root {
-    --color-canvas: #FFFFFF;
-    --color-base: #F7F7F5;
+    /* Clean Neutral Surfaces & Canvas */
+    --color-canvas: #F7F7F5;
+    --color-base: #FFFFFF;
     --color-surface-flat: #FFFFFF;
-    --color-surface-flat-border: rgba(10, 10, 11, 0.10);
+    --color-surface-flat-border: #E4E4E7;
     --color-surface-raised: #FFFFFF;
+    --color-surface-tint: #F4F4F5;
+    --color-surface-blur: rgba(255, 255, 255, 0.78);
+    --color-surface-pill: rgba(10, 10, 11, 0.08);
+
+    /* Accents */
+    --color-primary: #22C55E;
+    --color-lime: #22C55E;
+    --color-emerald: #16A34A;
+    --color-coral: #EF4444;
+
+    /* Typographic Ink (Neutral) */
     --color-text-primary: #0A0A0B;
-    --color-text-secondary: #6B6B6E;
+    --color-text-secondary: #52525B;
     --color-text-tertiary: #A0A0A3;
-    --color-divider: rgba(10, 10, 11, 0.08);
-    --color-btn-fill: #0A0A0B;
-    --color-btn-text: #F5F5F3;
+    --color-divider: #F4F4F5;
+
+    /* Interactive Buttons (Green Accent) */
+    --color-btn-fill: #22C55E;
+    --color-btn-text: #FFFFFF;
+
+    /* Debt Obligation State Tokens */
     --color-gold: #C9A24B;
     --color-gold-dim: rgba(201, 162, 75, 0.14);
-    
+
+    /* Typography Stacks */
     --font-heading: "IBMPlexSans_600SemiBold";
     --font-body: "Roboto_400Regular";
     --font-body-medium: "Roboto_500Medium";
-    
+
+    /* Radii */
     --radius-screen: 22px;
     --radius-card: 14px;
     --radius-input: 10px;
   }
 
   .dark {
-    --color-canvas: #000000;
+    /* Clean Carbon Dark Surfaces & Canvas */
+    --color-canvas: #0A0A0B;
     --color-base: #0A0A0B;
     --color-surface-flat: #141416;
-    --color-surface-flat-border: rgba(255, 255, 255, 0.08);
+    --color-surface-flat-border: #27272A;
     --color-surface-raised: #18181B;
+    --color-surface-tint: #1F1F23;
+    --color-surface-blur: rgba(28, 28, 31, 0.78);
+    --color-surface-pill: rgba(255, 255, 255, 0.12);
+
+    --color-primary: #22C55E;
+    --color-lime: #22C55E;
+    --color-emerald: #16A34A;
+    --color-coral: #EF4444;
+
     --color-text-primary: #F5F5F3;
     --color-text-secondary: #9C9C9F;
     --color-text-tertiary: #5E5E61;
-    --color-divider: rgba(255, 255, 255, 0.08);
-    --color-btn-fill: #F2F2F0;
+    --color-divider: #27272A;
+
+    --color-btn-fill: #22C55E;
     --color-btn-text: #0A0A0B;
+
+    --color-gold: #C9A24B;
+    --color-gold-dim: rgba(201, 162, 75, 0.14);
   }
 }

@@ -129,48 +129,48 @@ export function CurrencyPicker({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView className="flex-1 bg-[#F7F7F5] dark:bg-[#0A0A0B]">
+      <SafeAreaView className="flex-1 bg-canvas">
         {/* Grabber indicator */}
         <View className="items-center pt-2 pb-1">
-          <View className="w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-800" />
+          <View className="w-10 h-1 rounded-full bg-surface-border" />
         </View>
 
         {/* Top Header */}
         <View className="flex-row items-center justify-between px-6 pt-3 pb-3">
           <View>
-            <Text className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+            <Text className="text-xl font-bold tracking-tight text-ink">
               Currencies
             </Text>
-            <Text className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
+            <Text className="text-xs text-ink-muted mt-0.5">
               Select your active ledger denomination
             </Text>
           </View>
           <Pressable
             onPress={onClose}
             hitSlop={12}
-            className="w-8 h-8 rounded-full bg-zinc-200/70 dark:bg-zinc-800/80 items-center justify-center active:opacity-60"
+            className="w-8 h-8 rounded-full bg-surface-muted border border-surface-border items-center justify-center active:opacity-60"
           >
-            <Feather name="x" size={16} color="#71717A" />
+            <Feather name="x" size={16} color="#6B6B6E" />
           </Pressable>
         </View>
 
         {/* Minimalist Search Input */}
         <View className="px-6 py-2">
-          <View className="flex-row items-center bg-zinc-200/50 dark:bg-[#141416] border border-transparent dark:border-zinc-800/80 rounded-2xl px-3.5 h-11">
-            <Ionicons name="search" size={16} color="#71717A" />
+          <View className="flex-row items-center bg-surface border border-surface-border rounded-2xl px-3.5 h-11">
+            <Ionicons name="search" size={16} color="#6B6B6E" />
             <TextInput
               value={query}
               onChangeText={setQuery}
               placeholder="Search by code, country, or symbol"
-              placeholderTextColor="#71717A"
+              placeholderTextColor="#A0A0A3"
               autoCapitalize="none"
               autoCorrect={false}
               clearButtonMode="while-editing"
-              className="flex-1 ml-2 text-sm text-zinc-900 dark:text-zinc-100 p-0"
+              className="flex-1 ml-2 text-sm text-ink p-0"
             />
             {query.length > 0 && (
               <Pressable onPress={() => setQuery("")} hitSlop={8}>
-                <Ionicons name="close-circle" size={16} color="#A1A1AA" />
+                <Ionicons name="close-circle" size={16} color="#A0A0A3" />
               </Pressable>
             )}
           </View>
@@ -179,7 +179,7 @@ export function CurrencyPicker({
         {/* Popular Quick-Select Chips (hidden during active search) */}
         {!query && (
           <View className="px-6 pt-3 pb-2">
-            <Text className="text-[11px] font-semibold tracking-wider text-zinc-400 dark:text-zinc-500 uppercase mb-2">
+            <Text className="text-[11px] font-semibold tracking-wider text-ink-whisper uppercase mb-2">
               Popular
             </Text>
             <View className="flex-row flex-wrap gap-2">
@@ -191,15 +191,15 @@ export function CurrencyPicker({
                     onPress={() => handleSelect(item)}
                     className={`flex-row items-center px-3 py-1.5 rounded-full border ${
                       isSelected
-                        ? "bg-zinc-900 dark:bg-zinc-100 border-transparent"
-                        : "bg-white dark:bg-[#141416] border-zinc-200/80 dark:border-zinc-800"
+                        ? "bg-primary border-primary"
+                        : "bg-surface border-surface-border"
                     } active:opacity-75`}
                   >
                     <Text
-                      className={`text-xs font-semibold mr-1.5 ${
+                      className={`text-xs font-bold mr-1.5 ${
                         isSelected
-                          ? "text-white dark:text-zinc-950"
-                          : "text-zinc-900 dark:text-zinc-100"
+                          ? "text-white"
+                          : "text-ink"
                       }`}
                     >
                       {item.code}
@@ -207,8 +207,8 @@ export function CurrencyPicker({
                     <Text
                       className={`text-[11px] ${
                         isSelected
-                          ? "text-zinc-300 dark:text-zinc-600"
-                          : "text-zinc-400 dark:text-zinc-500"
+                          ? "text-white/80"
+                          : "text-ink-muted"
                       }`}
                     >
                       {item.symbol}
@@ -223,7 +223,7 @@ export function CurrencyPicker({
         {/* Continuous Inset List */}
         <View className="flex-1 px-6 pt-2">
           {!query && (
-            <Text className="text-[11px] font-semibold tracking-wider text-zinc-400 dark:text-zinc-500 uppercase mb-2">
+            <Text className="text-[11px] font-semibold tracking-wider text-ink-whisper uppercase mb-2">
               All Currencies
             </Text>
           )}
@@ -236,33 +236,33 @@ export function CurrencyPicker({
             contentContainerStyle={{ paddingBottom: 40 }}
             ListEmptyComponent={
               <View className="py-16 items-center">
-                <Text className="text-sm text-zinc-400 dark:text-zinc-500">
-                  No currencies match "{query}"
+                <Text className="text-sm text-ink-muted">
+                  No currencies match &quot;{query}&quot;
                 </Text>
               </View>
             }
-            renderItem={({ item, index }) => {
+            renderItem={({ item }) => {
               const isSelected = item.code === selectedCode;
               return (
                 <Pressable
                   onPress={() => handleSelect(item)}
-                  className={`flex-row items-center justify-between py-3 active:opacity-60 border-b border-zinc-200/50 dark:border-zinc-900`}
+                  className="flex-row items-center justify-between py-3 active:opacity-60 border-b border-surface-divider"
                 >
                   <View className="flex-row items-center gap-3.5 flex-1 min-w-0 mr-3">
                     {/* Minimal Monogram Symbol */}
                     <View
-                      className={`h-9 min-w-[38px] px-2 rounded-xl items-center justify-center ${
+                      className={`h-9 min-w-[38px] px-2 rounded-xl border items-center justify-center ${
                         isSelected
-                          ? "bg-zinc-900 dark:bg-zinc-100"
-                          : "bg-zinc-200/60 dark:bg-[#141416]"
+                          ? "bg-primary border-primary"
+                          : "bg-surface-muted border-surface-border"
                       }`}
                     >
                       <Text
                         numberOfLines={1}
                         className={`font-semibold text-xs text-center ${
                           isSelected
-                            ? "text-white dark:text-zinc-950 font-bold"
-                            : "text-zinc-800 dark:text-zinc-200"
+                            ? "text-white font-bold"
+                            : "text-ink"
                         }`}
                       >
                         {item.symbol}
@@ -274,11 +274,11 @@ export function CurrencyPicker({
                       <Text
                         numberOfLines={1}
                         ellipsizeMode="tail"
-                        className="text-sm font-semibold text-zinc-900 dark:text-zinc-100"
+                        className="text-sm font-semibold text-ink"
                       >
                         {item.name}
                       </Text>
-                      <Text className="text-[11px] text-zinc-400 dark:text-zinc-500 font-medium mt-0.5">
+                      <Text className="text-[11px] text-ink-muted font-medium mt-0.5">
                         {item.code}
                       </Text>
                     </View>
@@ -290,9 +290,7 @@ export function CurrencyPicker({
                       <Feather
                         name="check"
                         size={16}
-                        color={
-                          "#10B981" /* Emerald accent matches ledger success */
-                        }
+                        color="#22C55E"
                       />
                     )}
                   </View>

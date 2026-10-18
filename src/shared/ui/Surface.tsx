@@ -1,7 +1,6 @@
-// src/shared/ui/Surface.tsx
 import { cn } from "@shared/lib/cn";
-import { useColorSchemeContext } from "@shared/theme/ThemeProvider";
 import { BlurView } from "expo-blur";
+import { useColorScheme } from "nativewind";
 import { StyleSheet, View, ViewProps } from "react-native";
 
 export type SurfaceVariant = "flat" | "raised" | "overlay";
@@ -19,7 +18,8 @@ export function Surface({
   children,
   ...rest
 }: SurfaceProps) {
-  const scheme = useColorSchemeContext();
+  const { colorScheme } = useColorScheme();
+  const scheme = colorScheme === "dark" ? "dark" : "light";
 
   if (variant === "overlay") {
     return (

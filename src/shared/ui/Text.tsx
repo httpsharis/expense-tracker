@@ -12,7 +12,7 @@ export interface TextProps extends RNTextProps {
 export function Text({ className = '', style, ...props }: TextProps) {
   return (
     <RNText 
-      className={`font-body text-slate-900 dark:text-slate-100 ${className}`}
+      className={`font-body text-ink ${className}`}
       style={style}
       {...props} 
     />
