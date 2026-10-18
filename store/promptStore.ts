@@ -38,6 +38,10 @@ export const usePromptStore = create<PromptState>((set, get) => ({
   resolvePromise: null,
 
   confirm: (options: PromptOptions) => {
+    const existing = get().resolvePromise;
+    if (existing) {
+      existing(false);
+    }
     return new Promise<boolean>((resolve) => {
       set({
         isOpen: true,
@@ -55,6 +59,10 @@ export const usePromptStore = create<PromptState>((set, get) => ({
   },
 
   alert: (options: Omit<PromptOptions, "isAlert">) => {
+    const existing = get().resolvePromise;
+    if (existing) {
+      existing(false);
+    }
     return new Promise<void>((resolve) => {
       set({
         isOpen: true,
