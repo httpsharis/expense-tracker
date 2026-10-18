@@ -18,7 +18,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useSupabase } from "../../src/shared/hooks/useSupabase";
 import { useUserStore } from "../../store/userStore";
 
-export type AccountType = "cash" | "bank" | "wallet" | "savings";
 export type AccountType =
   | "cash"
   | "bank"
@@ -312,14 +311,6 @@ export default function AccountsScreen() {
                 Account Type
               </Text>
               <View className="flex-row flex-wrap gap-2">
-                {(["bank", "cash", "wallet", "savings"] as AccountType[]).map(
-                  (type) => {
-                    const isSelected = accountType === type;
-                    return (
-                      <Pressable
-                        key={type}
-                        onPress={() => setAccountType(type)}
-                        className={`px-4 py-2.5 rounded-xl border ${
                 {(
                   [
                     "bank",
@@ -343,25 +334,10 @@ export default function AccountsScreen() {
                       <Text
                         className={`text-xs font-semibold capitalize ${
                           isSelected
-                            ? "bg-zinc-900 dark:bg-zinc-100 border-transparent"
-                            : "bg-white dark:bg-[#141416] border-zinc-200 dark:border-zinc-800"
                             ? "text-white dark:text-zinc-950"
                             : "text-zinc-800 dark:text-zinc-200"
                         }`}
                       >
-                        <Text
-                          className={`text-xs font-semibold capitalize ${
-                            isSelected
-                              ? "text-white dark:text-zinc-950"
-                              : "text-zinc-800 dark:text-zinc-200"
-                          }`}
-                        >
-                          {type}
-                        </Text>
-                      </Pressable>
-                    );
-                  },
-                )}
                         {type.replace("_", " ")}
                       </Text>
                     </Pressable>
