@@ -76,5 +76,6 @@
     "update:preview": "eas update --channel preview",
     "update:prod": "eas update --channel production"
   },
+  "packageManager": "bun@1.4.0",
   "private": true
 }
