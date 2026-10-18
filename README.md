@@ -181,8 +181,8 @@ All surfaces, typography, and borders are mapped through universal CSS variables
 
 ### 1. Clone & Install Dependencies
 ```bash
-git clone https://github.com/your-username/Expense-Tracker.git
-cd Expense-Tracker
+git clone https://github.com/httpsharis/saldo.git
+cd saldo
 
 # Install dependencies using Bun (recommended)
 bun install
